@@ -1,0 +1,174 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Switch,  Alert,
+} from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
+import { authAPI } from '../services/api';
+import { Loading } from '../components/Loading';
+
+interface User {
+  user_id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string;
+  is_active: boolean;
+}
+
+export const UserManagement: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [emailToAdd, setEmailToAdd] = useState('');
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await authAPI.getUsers();
+      setUsers(response.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWhitelistEmail = async () => {
+    try {
+      await authAPI.whitelistEmail(emailToAdd);
+      setOpenDialog(false);
+      setEmailToAdd('');
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to whitelist email');
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: number, currentStatus: boolean) => {
+    try {
+      await authAPI.updateUserStatus(userId, !currentStatus);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update user status');
+    }
+  };
+
+  const handleToggleUserRole = async (userId: number, currentRole: string) => {
+    try {
+      const newRole = currentRole === 'Admin' ? 'RegularUser' : 'Admin';
+      await authAPI.updateUserRole(userId, newRole);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update user role');
+    }
+  };
+
+  if (loading) {
+    return <Loading message="Loading users..." />;
+  }
+
+  return (
+    <Box>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h4">User Management</Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenDialog(true)}
+        >
+          Whitelist Email
+        </Button>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Email</TableCell>
+              <TableCell>Role</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {users.map((user) => (
+              <TableRow key={user.user_id}>
+                <TableCell>
+                  {user.first_name && user.last_name
+                    ? `${user.first_name} ${user.last_name}`
+                    : 'N/A'}
+                </TableCell>
+                <TableCell>{user.email}</TableCell>
+                <TableCell>{user.role}</TableCell>
+                <TableCell>
+                  <Switch
+                    checked={user.is_active}
+                    onChange={() => handleToggleUserStatus(user.user_id, user.is_active)}
+                    color="primary"
+                  />
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleToggleUserRole(user.user_id, user.role)}
+                  >
+                    {user.role === 'Admin' ? 'Make Regular User' : 'Make Admin'}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+        <DialogTitle>Whitelist New Email</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Email Address"
+            type="email"
+            fullWidth
+            value={emailToAdd}
+            onChange={(e) => setEmailToAdd(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button onClick={handleWhitelistEmail} variant="contained">
+            Whitelist
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
