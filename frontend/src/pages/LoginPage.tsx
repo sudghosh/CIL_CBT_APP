@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Container, Typography, Paper } from '@mui/material';
-import { GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,10 +8,12 @@ export const LoginPage: React.FC = () => {
   const { login, error } = useAuth();
   const navigate = useNavigate();
 
-  const handleSuccess = async (credentialResponse: any) => {
+  const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
-      await login(credentialResponse);
-      navigate('/');
+      if (credentialResponse.credential) {
+        await login({ token: credentialResponse.credential });
+        navigate('/');
+      }
     } catch (err) {
       console.error('Login failed:', err);
     }
@@ -43,6 +45,7 @@ export const LoginPage: React.FC = () => {
             <GoogleLogin
               onSuccess={handleSuccess}
               onError={() => console.log('Login Failed')}
+              useOneTap
             />
           </Box>
         </Paper>

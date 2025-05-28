@@ -1,16 +1,37 @@
-# Backend dependencies
+# Core dependencies
 fastapi==0.104.1
 uvicorn==0.23.2
 gunicorn==21.2.0
 python-dotenv==1.0.0
+
+# Database
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.7
-passlib==1.7.4
-python-jose[cryptography]==3.3.0
 alembic==1.12.0
-python-multipart==0.0.6
-pandas==2.1.1
-pydantic==2.4.2
-requests==2.31.0
+
+# Authentication & Security
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
 google-auth==2.23.3
 google-auth-oauthlib==1.1.0
+
+# Data Processing
+pandas==2.1.1
+pydantic==2.4.2
+pydantic-settings==2.0.3
+python-multipart==0.0.6
+
+# HTTP & Networking
+requests==2.31.0
+httpx==0.25.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.0
+
+# Development
+black==23.10.1
+isort==5.12.0
+flake8==6.1.0
