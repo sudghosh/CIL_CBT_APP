@@ -81,6 +81,10 @@ async def upload_questions(
     try:
         if file.filename.endswith('.csv'):
             df = pd.read_csv(io.StringIO(content.decode('utf-8')))
+            # Ensure necessary columns are present
+            required_cols = ['paper_name', 'section_name', 'question_text', 'correct_option_index'] + [f'option_{i+1}' for i in range(4)]
+            if not all(col in df.columns for col in required_cols):
+                 raise HTTPException(status_code=400, detail=f"CSV file must contain columns: {', '.join(required_cols)}")
         else:
             df = pd.read_excel(io.BytesIO(content))
         
@@ -92,7 +96,6 @@ async def upload_questions(
                 paper = Paper(paper_name=row['paper_name'], total_marks=100)
                 db.add(paper)
                 db.commit()
-            
             # Get or create section
             section = db.query(Section).filter(
                 Section.paper_id == paper.paper_id,
@@ -104,7 +107,6 @@ async def upload_questions(
                     section_name=row['section_name']
                 )
                 db.add(section)
-                db.commit()
 
             # Create question
             question = Question(
@@ -116,8 +118,6 @@ async def upload_questions(
                 section_id=section.section_id,
                 default_difficulty_level=row.get('difficulty', 'Easy')
             )
-            db.add(question)
-            db.commit()
 
             # Add options
             for i in range(4):
@@ -126,17 +126,21 @@ async def upload_questions(
                     option_text=row[f'option_{i+1}'],
                     option_order=i
                 )
-                db.add(option)
+                # Use bulk_save_objects to add question and options in batches
+                # db.add() is needed for relationships to be established before bulk save
+                question.options.append(option) 
             
+            db.add(question) # Add question to the session
             questions_added += 1
             
         db.commit()
         return {"status": "success", "questions_added": questions_added}
     
     except Exception as e:
+        db.rollback() # Rollback the transaction in case of error
         raise HTTPException(
             status_code=400,
-            detail=f"Error processing file: {str(e)}"
+            detail=f"Error processing file: {e}"
         )
 
 @router.get("/{question_id}", response_model=QuestionResponse)

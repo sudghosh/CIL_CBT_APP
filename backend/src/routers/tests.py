@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database.database import get_db
-from ..database.models import (
+from ..database.models import ( 
     TestTemplate, TestTemplateSection, TestAttempt, TestAnswer,
     Question, QuestionOption, User
 )
@@ -58,27 +58,33 @@ async def create_test_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_admin)
 ):
-    db_template = TestTemplate(
-        template_name=template.template_name,
-        test_type=template.test_type,
-        created_by_user_id=current_user.user_id
-    )
-    db.add(db_template)
-    db.commit()
-
-    for section in template.sections:
-        db_section = TestTemplateSection(
-            template_id=db_template.template_id,
-            paper_id=section.paper_id,
-            section_id=section.section_id,
-            subsection_id=section.subsection_id,
-            question_count=section.question_count
+    try:
+        db_template = TestTemplate(
+            template_name=template.template_name,
+            test_type=template.test_type,
+            created_by_user_id=current_user.user_id
         )
-        db.add(db_section)
+        db.add(db_template)
+        db.flush() # Use flush to get the template_id before committing
+
+        for section in template.sections:
+            db_section = TestTemplateSection(
+                template_id=db_template.template_id,
+                paper_id=section.paper_id,
+                section_id=section.section_id,
+                subsection_id=section.subsection_id,
+                question_count=section.question_count
+            )
+            db.add(db_section)
+        
+        db.commit()
+        db.refresh(db_template)
+        return db_template
     
-    db.commit()
-    db.refresh(db_template)
-    return db_template
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating test template: {e}") # Basic logging
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create test template")
 
 @router.post("/start", response_model=TestAttemptResponse)
 async def start_test(
@@ -86,50 +92,55 @@ async def start_test(
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_token)
 ):
-    template = db.query(TestTemplate).filter(TestTemplate.template_id == template_id).first()
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    try:
+        template = db.query(TestTemplate).filter(TestTemplate.template_id == template_id).first()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
 
-    # Check if user has an incomplete test
-    incomplete_test = db.query(TestAttempt).filter(
-        TestAttempt.user_id == current_user.user_id,
-        TestAttempt.status == "InProgress"
-    ).first()
-    if incomplete_test:
-        raise HTTPException(
-            status_code=400,
-            detail="You have an incomplete test. Please finish or abandon it first."
+        # Check if user has an incomplete test
+        incomplete_test = db.query(TestAttempt).filter(
+            TestAttempt.user_id == current_user.user_id,
+            TestAttempt.status == "InProgress"
+        ).first()
+        if incomplete_test:
+            raise HTTPException(
+                status_code=400,
+                detail="You have an incomplete test. Please finish or abandon it first."
+            )
+
+        # Create test attempt
+        test_attempt = TestAttempt(
+            user_id=current_user.user_id,
+            test_type=template.test_type,
+            test_template_id=template.template_id,
+            status="InProgress",
+            total_allotted_duration_minutes=180  # 3 hours for CIL tests # TODO: Make this dynamic based on template
         )
+        db.add(test_attempt)
+        db.flush() # Use flush to get the attempt_id before committing
 
-    # Create test attempt
-    test_attempt = TestAttempt(
-        user_id=current_user.user_id,
-        test_type=template.test_type,
-        test_template_id=template.template_id,
-        status="InProgress",
-        total_allotted_duration_minutes=180  # 3 hours for CIL tests
-    )
-    db.add(test_attempt)
-    db.commit()
+        # Select questions based on template sections
+        for template_section in template.sections:
+            query = db.query(Question).filter(Question.is_active == True)
+            if template_section.paper_id:
+                query = query.filter(Question.paper_id == template_section.paper_id)
+            if template_section.section_id:
+                query = query.filter(Question.section_id == template_section.section_id)
+            if template_section.subsection_id:
+                query = query.filter(Question.subsection_id == template_section.subsection_id)
+            
+            # Fetch only the required number of question IDs
+            question_ids = [q[0] for q in query.with_entities(Question.question_id).all()]
+            
+            selected_question_ids = random.sample(
+                question_ids,
+                min(template_section.question_count, len(question_ids))
+            )
 
-    # Select questions based on template sections
-    for template_section in template.sections:
-        query = db.query(Question).filter(Question.is_active == True)
-        if template_section.paper_id:
-            query = query.filter(Question.paper_id == template_section.paper_id)
-        if template_section.section_id:
-            query = query.filter(Question.section_id == template_section.section_id)
-        if template_section.subsection_id:
-            query = query.filter(Question.subsection_id == template_section.subsection_id)
-        
-        questions = query.all()
-        selected_questions = random.sample(
-            questions,
-            min(template_section.question_count, len(questions))
-        )
-
-        # Create blank answers for selected questions
-        for question in selected_questions:
+            # Create blank answers for selected questions
+            for question_id in selected_question_ids:
+                # Fetch the full question object only if needed later, or just create answer with ID
+                # For creating answers, we only need the question_id
             answer = TestAnswer(
                 attempt_id=test_attempt.attempt_id,
                 question_id=question.question_id
@@ -137,9 +148,13 @@ async def start_test(
             db.add(answer)
     
     db.commit()
-    db.refresh(test_attempt)
-    return test_attempt
+        db.refresh(test_attempt)
+        return test_attempt
 
+    except Exception as e:
+        db.rollback()
+        print(f"Error starting test: {e}") # Basic logging
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to start test")
 @router.post("/submit/{attempt_id}/answer")
 async def submit_answer(
     attempt_id: int,
@@ -252,22 +267,16 @@ async def get_test_questions(
     if not attempt:
         raise HTTPException(status_code=404, detail="Test attempt not found")
 
-    # Get answers (which link to questions) for this attempt
-    answers = db.query(TestAnswer).filter(
+    # Use joinedload to fetch questions and their options efficiently
+    answers_with_questions = db.query(TestAnswer).filter(
         TestAnswer.attempt_id == attempt_id
+    ).options(
+        joinedload(TestAnswer.question).joinedload(Question.options)
     ).all()
 
     questions = []
-    for answer in answers:
-        question = db.query(Question).filter(
-            Question.question_id == answer.question_id
-        ).first()
-        if question:
-            # Get options for this question
-            options = db.query(QuestionOption).filter(
-                QuestionOption.question_id == question.question_id
-            ).order_by(QuestionOption.option_order).all()
-            
+    for answer in answers_with_questions:
+        question = answer.question
             # Convert to dict and remove sensitive data
             question_dict = {
                 "question_id": question.question_id,
@@ -275,8 +284,8 @@ async def get_test_questions(
                 "options": [
                     {
                         "option_id": opt.option_id,
-                        "option_text": opt.option_text,
-                        "option_order": opt.option_order
+                        "option_text": opt.option_text, # Assuming you still need option text here
+                        "option_order": opt.option_order # Assuming you still need option order here
                     }
                     for opt in options
                 ]
@@ -307,19 +316,15 @@ async def get_attempt_details(
         )
 
     # Get answers with questions for this attempt
-    answers = db.query(TestAnswer).filter(
+    answers_with_details = db.query(TestAnswer).filter(
         TestAnswer.attempt_id == attempt_id
+    ).options(
+        joinedload(TestAnswer.question).joinedload(Question.options)
     ).all()
 
     questions = []
-    for answer in answers:
-        question = db.query(Question).filter(
-            Question.question_id == answer.question_id
-        ).first()
-        if question:
-            options = db.query(QuestionOption).filter(
-                QuestionOption.question_id == question.question_id
-            ).order_by(QuestionOption.option_order).all()
+    for answer in answers_with_details:
+        question = answer.question
             
             questions.append({
                 "question_id": question.question_id,
@@ -330,9 +335,9 @@ async def get_attempt_details(
                 "explanation": question.explanation,
                 "options": [
                     {
-                        "option_id": opt.option_id,
-                        "option_text": opt.option_text,
-                        "option_order": opt.option_order
+                        "option_id": opt.option_id, # Assuming you still need option ID here
+                        "option_text": opt.option_text, # Assuming you still need option text here
+                        "option_order": opt.option_order # Assuming you still need option order here
                     }
                     for opt in options
                 ]
