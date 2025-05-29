@@ -54,8 +54,13 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
 const App: React.FC = () => {
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
+  if (!clientId) {
+    console.error('Google Client ID is not configured!');
+    return <div>Configuration Error</div>;
+  }
+
   return (
-    <GoogleOAuthProvider clientId={clientId || ''}>
+    <GoogleOAuthProvider clientId={clientId}>
       <ThemeProvider theme={theme}>
         <AuthProvider>
           <BrowserRouter>
@@ -70,7 +75,7 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/tests/mock"
+                path="/mock-test"
                 element={
                   <ProtectedRoute>
                     <MockTestPage />
@@ -78,7 +83,7 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/tests/practice"
+                path="/practice-test"
                 element={
                   <ProtectedRoute>
                     <PracticeTestPage />
@@ -95,7 +100,7 @@ const App: React.FC = () => {
               />
               {/* Admin Routes */}
               <Route
-                path="/admin/questions"
+                path="/manage/questions"
                 element={
                   <AdminRoute>
                     <QuestionManagement />
@@ -103,7 +108,7 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/admin/users"
+                path="/manage/users"
                 element={
                   <AdminRoute>
                     <UserManagement />

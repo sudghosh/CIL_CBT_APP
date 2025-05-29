@@ -1,20 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
-import requests
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import os
 from ..database.database import get_db
 from ..database.models import User, AllowedEmail
-from ..auth.auth import verify_token, verify_admin, create_access_token
+from ..auth.auth import create_access_token, verify_token, verify_admin
 from datetime import timedelta
 from pydantic import BaseModel
-import os
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Load Google Client ID from environment
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
+class GoogleTokenInfo(BaseModel):
+    token: str
 
 class Token(BaseModel):
     access_token: str
@@ -37,72 +38,93 @@ class UserResponse(UserBase):
         from_attributes = True
 
 @router.post("/google-callback")
-async def google_auth_callback(token_info: dict, db: Session = Depends(get_db)):
+async def google_auth_callback(token_info: GoogleTokenInfo, request: Request, db: Session = Depends(get_db)):
     try:
+        # Print debug information
+        print(f"Received token info: {token_info}")
+        print(f"Using client ID: {GOOGLE_CLIENT_ID}")
+
         # Verify the Google token
         idinfo = id_token.verify_oauth2_token(
-            token_info.get("token"), 
-            google_requests.Request(), 
+            token_info.token,
+            requests.Request(),
             GOOGLE_CLIENT_ID
         )
 
+        # Get user information from the verified token
         email = idinfo['email']
-        google_id = idinfo['sub']
-        
-        # Check if email is whitelisted
-        allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
-        if not allowed_email:
-            # If no allowed emails exist yet (first user), make this user an admin
-            if db.query(AllowedEmail).count() == 0:
-                user = User(
-                    email=email,
-                    google_id=google_id,
-                    first_name=idinfo.get('given_name'),
-                    last_name=idinfo.get('family_name'),
-                    role="Admin",
-                    is_active=True
-                )
-                db.add(user)
-                allowed_email = AllowedEmail(
-                    email=email,
-                    added_by_admin_id=1  # First user will have ID 1
-                )
-                db.add(allowed_email)
-                db.commit()
-                db.refresh(user)
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Email not whitelisted"
-                )
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email not found in token"
+            )
+
+        # Check if this is the first user (will become admin)
+        is_first_user = db.query(User).count() == 0
+
+        # If not first user, check whitelist
+        if not is_first_user:
+            allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
+            if not allowed_email:
+                print(f"Email {email} not in whitelist")
+                # Special case: add binty.ghosh@gmail.com to whitelist if not exists
+                if email == "binty.ghosh@gmail.com":
+                    # Add to whitelist
+                    admin_user = db.query(User).filter(User.role == "Admin").first()
+                    if admin_user:
+                        allowed_email = AllowedEmail(
+                            email=email,
+                            added_by_admin_id=admin_user.user_id
+                        )
+                        db.add(allowed_email)
+                        db.commit()
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Email not whitelisted"
+                    )
 
         # Get or create user
         user = db.query(User).filter(User.email == email).first()
         if not user:
             user = User(
                 email=email,
-                google_id=google_id,
-                first_name=idinfo.get('given_name'),
-                last_name=idinfo.get('family_name'),
-                role="RegularUser"
+                google_id=idinfo['sub'],
+                first_name=idinfo.get('given_name', ''),
+                last_name=idinfo.get('family_name', ''),
+                role="Admin" if is_first_user else "RegularUser",
+                is_active=True
             )
             db.add(user)
             db.commit()
             db.refresh(user)
 
+            # If this is the first user, add their email to whitelist
+            if is_first_user:
+                allowed_email = AllowedEmail(
+                    email=email,
+                    added_by_admin_id=user.user_id
+                )
+                db.add(allowed_email)
+                db.commit()
+
+        # Create access token
         access_token_expires = timedelta(minutes=30)
         access_token = create_access_token(
             data={"sub": email},
             expires_delta=access_token_expires
         )
+
         return {"access_token": access_token, "token_type": "bearer"}
-        
-    except ValueError:
+
+    except ValueError as e:
+        print(f"Token validation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail=f"Invalid token: {str(e)}"
         )
     except Exception as e:
+        print(f"Authentication error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
