@@ -45,89 +45,151 @@ async def google_auth_callback(token_info: GoogleTokenInfo, request: Request, db
         print(f"Using client ID: {GOOGLE_CLIENT_ID}")
 
         # Verify the Google token
-        idinfo = id_token.verify_oauth2_token(
-            token_info.token,
-            requests.Request(),
-            GOOGLE_CLIENT_ID
-        )
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token_info.token,
+                requests.Request(),
+                GOOGLE_CLIENT_ID
+            )
+            print("Google token verified successfully.")
+        except ValueError as e:
+            print(f"Token verification failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: {str(e)}"
+            )
+        except Exception as e:
+            print(f"An unexpected error occurred during token verification: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred during token verification"
+            )
 
         # Get user information from the verified token
-        email = idinfo['email']
+        email = idinfo.get('email')
         if not email:
+            print("Email not found in token.")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email not found in token"
             )
+        print(f"Email extracted from token: {email}")
+
 
         # Check if this is the first user (will become admin)
-        is_first_user = db.query(User).count() == 0
+        try:
+            is_first_user = db.query(User).count() == 0
+            print(f"Is first user: {is_first_user}")
+        except Exception as e:
+            print(f"Error checking for first user: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error checking user count in database"
+            )
 
         # If not first user, check whitelist
         if not is_first_user:
-            allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
-            if not allowed_email:
-                print(f"Email {email} not in whitelist")
-                # Special case: add binty.ghosh@gmail.com to whitelist if not exists
-                if email == "binty.ghosh@gmail.com":
-                    # Add to whitelist
-                    admin_user = db.query(User).filter(User.role == "Admin").first()
-                    if admin_user:
-                        allowed_email = AllowedEmail(
-                            email=email,
-                            added_by_admin_id=admin_user.user_id
+            try:
+                allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
+                if not allowed_email:
+                    print(f"Email {email} not in whitelist")
+                    # Special case: add binty.ghosh@gmail.com to whitelist if not exists
+                    if email == "binty.ghosh@gmail.com":
+                        # Add to whitelist
+                        admin_user = db.query(User).filter(User.role == "Admin").first()
+                        if admin_user:
+                            allowed_email = AllowedEmail(
+                                email=email,
+                                added_by_admin_id=admin_user.user_id
+                            )
+                            db.add(allowed_email)
+                            db.commit()
+                            print(f"Email {email} added to whitelist for admin {admin_user.user_id}")
+                        else:
+                             print(f"Could not find admin user to whitelist {email}")
+                             # Decide how to handle this case - maybe raise an error or log a warning
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Email not whitelisted"
                         )
-                        db.add(allowed_email)
-                        db.commit()
                 else:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Email not whitelisted"
-                    )
+                    print(f"Email {email} found in whitelist.")
+            except HTTPException:
+                 raise # Re-raise the HTTPException
+            except Exception as e:
+                print(f"Error checking or adding email to whitelist: {str(e)}")
+                db.rollback() # Rollback the transaction in case of error
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error processing email whitelist"
+                )
+
 
         # Get or create user
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            user = User(
-                email=email,
-                google_id=idinfo['sub'],
-                first_name=idinfo.get('given_name', ''),
-                last_name=idinfo.get('family_name', ''),
-                role="Admin" if is_first_user else "RegularUser",
-                is_active=True
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-            # If this is the first user, add their email to whitelist
-            if is_first_user:
-                allowed_email = AllowedEmail(
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            if not user:
+                user = User(
                     email=email,
-                    added_by_admin_id=user.user_id
+                    google_id=idinfo.get('sub', ''), # Use .get for safety
+                    first_name=idinfo.get('given_name', ''),
+                    last_name=idinfo.get('family_name', ''),
+                    role="Admin" if is_first_user else "RegularUser",
+                    is_active=True
                 )
-                db.add(allowed_email)
+                db.add(user)
                 db.commit()
+                db.refresh(user)
+                print(f"User created with email: {email}")
+
+                # If this is the first user, add their email to whitelist
+                if is_first_user:
+                    allowed_email = AllowedEmail(
+                        email=email,
+                        added_by_admin_id=user.user_id
+                    )
+                    db.add(allowed_email)
+                    db.commit()
+                    print(f"First user email {email} added to whitelist.")
+
+            else:
+                print(f"User found with email: {email}")
+
+        except Exception as e:
+            print(f"Error getting or creating user: {str(e)}")
+            db.rollback() # Rollback the transaction in case of error
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error processing user data"
+            )
+
 
         # Create access token
-        access_token_expires = timedelta(minutes=30)
-        access_token = create_access_token(
-            data={"sub": email},
-            expires_delta=access_token_expires
-        )
+        try:
+            access_token_expires = timedelta(minutes=30)
+            access_token = create_access_token(
+                data={"sub": email},
+                expires_delta=access_token_expires
+            )
+            print("Access token created successfully.")
+        except Exception as e:
+             print(f"Error creating access token: {str(e)}")
+             raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error creating access token"
+            )
+
 
         return {"access_token": access_token, "token_type": "bearer"}
 
-    except ValueError as e:
-        print(f"Token validation error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}"
-        )
+    except HTTPException:
+        raise # Re-raise HTTPException
     except Exception as e:
-        print(f"Authentication error: {str(e)}")
+        print(f"An unhandled error occurred during Google authentication: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail="An unexpected error occurred during authentication"
         )
 
 @router.get("/me", response_model=UserResponse)
