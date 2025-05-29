@@ -12,7 +12,6 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - cil-network
-
   backend:
     build: 
       context: ./backend
@@ -22,6 +21,8 @@ services:
       - ***REMOVED***=dev-secret-key-here
       - ALGORITHM=HS256
       - ***REMOVED***_EXPIRE_MINUTES=30
+      - ***REMOVED***=35588221822-439neljrhq8chpqipjsavor0rtc4ni11.apps.googleusercontent.com
+      - ***REMOVED***=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
     ports:
       - "8000:8000"
     volumes:
