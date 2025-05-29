@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
-  login: (tokenInfo: any) => Promise<void>;
+  login: (tokenInfo: { token: string }) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -30,8 +30,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const token = localStorage.getItem('token');
     if (token) {
       authAPI.getCurrentUser()
-        .then(response => setUser(response.data))
-        .catch(() => {
+        .then(response => {
+          console.log('Current user:', response.data);
+          setUser(response.data);
+        })
+        .catch((error) => {
+          console.error('Error fetching current user:', error);
           localStorage.removeItem('token');
           setUser(null);
         })
@@ -41,15 +45,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const login = async (tokenInfo: any) => {
+  const login = async (tokenInfo: { token: string }) => {
     try {
+      console.log('Attempting login with token:', tokenInfo);
       const response = await authAPI.googleLogin(tokenInfo);
+      console.log('Login response:', response);
+      
       localStorage.setItem('token', response.data.access_token);
       const userResponse = await authAPI.getCurrentUser();
+      console.log('User data:', userResponse.data);
+      
       setUser(userResponse.data);
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to login');
+      console.error('Login error:', err);
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to login';
+      console.error('Error message:', errorMessage);
+      setError(errorMessage);
       throw err;
     }
   };

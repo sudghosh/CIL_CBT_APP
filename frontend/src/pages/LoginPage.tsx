@@ -1,46 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Container, Typography, Paper, CircularProgress } from '@mui/material';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-export const LoginPage: React.FC = () => {
+export const LoginPage: React.FC = (): JSX.Element => {
   const { login, error: authError } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Log environment variables (excluding sensitive data)
-    console.log('API URL:', process.env.REACT_APP_API_URL);
-    console.log('Google Client ID configured:', !!process.env.REACT_APP_GOOGLE_CLIENT_ID);
-  }, []);
-
   const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('Google login response received:', {
-        hasCredential: !!credentialResponse.credential,
-        selectBy: credentialResponse.select_by,
-      });
+      console.log('Google login response:', credentialResponse);
 
       if (!credentialResponse.credential) {
         throw new Error('No credential received from Google');
       }
 
-      // Log the API call (without exposing the token)
-      console.log('Attempting to login with backend...');
       await login({ token: credentialResponse.credential });
-      console.log('Login successful, navigating to home...');
       navigate('/');
     } catch (err: any) {
-      console.error('Login error:', {
-        message: err.message,
-        response: err.response?.data,
-        status: err.response?.status,
-      });
+      console.error('Login error:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to login');
     } finally {
       setLoading(false);
@@ -48,8 +31,8 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleError = () => {
-    console.error('Google sign-in failed');
     setError('Google sign-in failed. Please try again.');
+    console.error('Google sign-in failed');
   };
 
   return (
@@ -95,8 +78,9 @@ export const LoginPage: React.FC = () => {
                 useOneTap
                 theme="filled_blue"
                 size="large"
+                type="standard"
                 shape="rectangular"
-                auto_select={false}
+                width="300px"
               />
             )}
           </Box>
