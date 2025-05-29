@@ -1,26 +1,43 @@
+# Build stage
+FROM node:18-alpine as builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies with caching
+RUN npm ci --only=production --no-audit
+
+# Copy source files
+COPY . .
+
+# Set environment for build
+ENV NODE_ENV=production
+ENV CI=false
+
+# Development stage
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies first for better caching
-COPY package*.json ./
+# Copy dependencies and build files from builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./
 
-# Clean install with specific flags to handle peer dependencies
-RUN npm cache clean --force && \
-    npm install --legacy-peer-deps --no-package-lock
-
-# Copy the rest of the application
-COPY . .
-
-# Set environment variables
+# Set development environment
 ENV NODE_ENV=development
 ENV WATCHPACK_POLLING=true
 ENV CI=false
 
-# Expose port 3000
+# Expose port
 EXPOSE 3000
 
-# Start the development server with the correct host
+# Start development server
 CMD ["npm", "start", "--", "--host", "0.0.0.0"]
 
 
