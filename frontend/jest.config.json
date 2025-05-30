@@ -1,0 +1,17 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "jsdom",
+  "moduleNameMapper": {
+    "\\.(css|less|sass|scss)$": "<rootDir>/src/__mocks__/styleMock.js",
+    "\\.(gif|ttf|eot|svg)$": "<rootDir>/src/__mocks__/fileMock.js"
+  },
+  "transform": {
+    "^.+\\.(ts|tsx)$": "ts-jest"
+  },
+  "transformIgnorePatterns": [
+    "node_modules/(?!axios)/"
+  ],
+  "setupFilesAfterEnv": [
+    "@testing-library/jest-dom/extend-expect"
+  ]
+}

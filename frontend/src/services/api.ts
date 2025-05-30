@@ -1,7 +1,25 @@
 import axios from 'axios';
-import { handleAPIError } from '../utils/errorHandler';
+import { handleAPIError, APIError } from '../utils/errorHandler';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+// Define types for API requests
+interface GoogleLoginRequest {
+  token: string;
+}
+
+interface QuestionData {
+  question_text: string;
+  paper_id: number;
+  section_id: number;
+  default_difficulty_level: string;
+  options: Array<{
+    option_text: string;
+    option_order: number;
+  }>;
+  correct_option_index: number;
+  explanation?: string;
+}
 
 const api = axios.create({
   baseURL: API_URL,
@@ -19,14 +37,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Add error handling interceptor
+// Add error handling interceptor with detailed error messages
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle token expiration
+    // Handle different types of errors
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/login';
+      throw new APIError('Your session has expired. Please log in again.', 401);
+    }
+    if (error.response?.status === 403) {
+      throw new APIError('You do not have permission to perform this action.', 403);
+    }
+    if (error.response?.status === 404) {
+      throw new APIError('The requested resource was not found.', 404);
+    }
+    if (error.response?.status === 422) {
+      throw new APIError('Invalid input data. Please check your submission.', 422);
     }
     throw handleAPIError(error);
   }
@@ -34,7 +62,7 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
-  googleLogin: (tokenInfo: any) => api.post('/auth/google-callback', tokenInfo),
+  googleLogin: (tokenInfo: GoogleLoginRequest) => api.post('/auth/google-callback', tokenInfo),
   getCurrentUser: () => api.get('/auth/me'),
   getUsers: () => api.get('/auth/users'),
   whitelistEmail: (email: string) => api.post('/auth/whitelist-email', { email }),
@@ -49,7 +77,7 @@ export const questionsAPI = {
   getQuestions: (params?: { paper_id?: number; section_id?: number }) =>
     api.get('/questions', { params }),
   getQuestion: (id: number) => api.get(`/questions/${id}`),
-  createQuestion: (data: any) => api.post('/questions', data),
+  createQuestion: (data: QuestionData) => api.post('/questions', data),
   uploadQuestions: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -72,6 +100,8 @@ export const testsAPI = {
   getAttempts: () => api.get('/tests/attempts'),
   getQuestions: (attemptId: number) => api.get(`/tests/questions/${attemptId}`),
   getAttemptDetails: (attemptId: number) => api.get(`/tests/attempts/${attemptId}/details`),
+  toggleMarkForReview: (attemptId: number, questionId: number) =>
+    api.post(`/tests/${attemptId}/mark-review/${questionId}`),
 };
 
 // Papers API

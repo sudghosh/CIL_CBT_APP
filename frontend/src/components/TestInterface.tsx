@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, ReactElement } from 'react';
 import {
   Box,
   Paper,
@@ -13,8 +13,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CircularProgress,
+  Theme
 } from '@mui/material';
 import { testsAPI } from '../services/api';
+import { ErrorAlert } from './ErrorAlert';
 
 interface QuestionOption {
   option_id: number;
@@ -34,24 +37,54 @@ interface TestProps {
   onComplete: () => void;
 }
 
-export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onComplete }) => {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<{ [key: number]: number | null }>({});
-  const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
-  const [timeLeft, setTimeLeft] = useState(180 * 60); // 3 hours in seconds
-  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+interface AnswerSubmission {
+  question_id: number;
+  selected_option_index: number;
+  time_taken_seconds: number;
+  is_marked_for_review: boolean;
+}
 
-  const handleSubmitTest = async () => {
+export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onComplete }): ReactElement => {
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
+  const [timeLeft, setTimeLeft] = useState<number>(180 * 60); // 3 hours in seconds
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isSavingAnswer, setIsSavingAnswer] = useState<boolean>(false);
+
+  // Memoize handleSubmitTest to prevent infinite dependency loop
+  const handleSubmitTest = useCallback(async () => {
     try {
+      if (markedForReview.size > 0) {
+        const confirmSubmit = window.confirm(
+          `You have ${markedForReview.size} question(s) marked for review. Are you sure you want to submit?`
+        );
+        if (!confirmSubmit) {
+          return;
+        }
+      }
+
+      setIsSubmitting(true);
+      setError(null);
       await testsAPI.finishTest(attemptId);
       onComplete();
-    } catch (error) {
-      console.error('Failed to submit test:', error);
+    } catch (err) {
+      setError('Failed to submit test. Please try again.');
+      console.error('Test submission error:', err);
+    } finally {
+      setIsSubmitting(false);
+      setShowConfirmSubmit(false);
     }
-  };
+  }, [attemptId, markedForReview.size, onComplete]);
 
+  // Timer effect with cleanup
   useEffect(() => {
+    let isActive = true;
     const timer = setInterval(() => {
+      if (!isActive) return;
+      
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
@@ -62,46 +95,69 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
   }, [handleSubmitTest]);
 
   const handleAnswerChange = async (questionId: number, optionIndex: number) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
-
+    if (isSubmitting || isSavingAnswer) return;
+    
     try {
-      await testsAPI.submitAnswer(attemptId, {
+      setIsSavingAnswer(true);
+      setError(null);
+      
+      // Optimistically update UI
+      setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+
+      const submission: AnswerSubmission = {
         question_id: questionId,
         selected_option_index: optionIndex,
         time_taken_seconds: 180 * 60 - timeLeft,
-        is_marked_for_review: markedForReview.has(questionId),
+        is_marked_for_review: markedForReview.has(questionId)
+      };
+
+      await testsAPI.submitAnswer(attemptId, submission);
+    } catch (err) {
+      setError('Failed to save answer. Please try again.');
+      console.error('Answer submission error:', err);
+      // Revert the answer in UI if save failed
+      setAnswers((prev) => {
+        const newAnswers = { ...prev };
+        delete newAnswers[questionId];
+        return newAnswers;
       });
-    } catch (error) {
-      console.error('Failed to submit answer:', error);
+    } finally {
+      setIsSavingAnswer(false);
     }
   };
 
-  const toggleMarkForReview = async (questionId: number) => {
-    const newMarkedForReview = new Set(markedForReview);
-    if (markedForReview.has(questionId)) {
-      newMarkedForReview.delete(questionId);
-    } else {
-      newMarkedForReview.add(questionId);
-    }
-    setMarkedForReview(newMarkedForReview);
-
+  const handleMarkForReview = async (questionId: number) => {
+    if (isSubmitting) return;
+    
     try {
-      await testsAPI.submitAnswer(attemptId, {
-        question_id: questionId,
-        selected_option_index: answers[questionId] ?? null,
-        time_taken_seconds: 180 * 60 - timeLeft,
-        is_marked_for_review: !markedForReview.has(questionId),
+      setError(null);
+      setMarkedForReview((prev) => {
+        const newSet = new Set(prev);
+        if (prev.has(questionId)) {
+          newSet.delete(questionId);
+        } else {
+          newSet.add(questionId);
+        }
+        return newSet;
       });
-    } catch (error) {
-      console.error('Failed to update review status:', error);
+
+      await testsAPI.toggleMarkForReview(attemptId, questionId);
+    } catch (err) {
+      setError('Failed to mark question for review. Please try again.');
+      console.error('Mark for review error:', err);
+      // Revert UI state on error
+      setMarkedForReview((prev) => new Set(prev));
     }
   };
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -110,10 +166,17 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleNavigateQuestion = (index: number) => {
+    if (index < 0 || index >= questions.length || isSubmitting) return;
+    setCurrentQuestionIndex(index);
+  };
+
   const currentQuestion = questions[currentQuestionIndex];
 
   return (
     <Box sx={{ p: 3 }}>
+      <ErrorAlert error={error} onClose={() => setError(null)} />
+
       {/* Timer and Progress */}
       <Paper sx={{ p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6">
@@ -132,15 +195,13 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
         </Typography>
         <RadioGroup
           value={answers[currentQuestion.question_id] ?? ''}
-          onChange={(e) =>
-            handleAnswerChange(currentQuestion.question_id, parseInt(e.target.value))
-          }
+          onChange={(e) => handleAnswerChange(currentQuestion.question_id, parseInt(e.target.value, 10))}
         >
           {currentQuestion.options.map((option) => (
             <FormControlLabel
               key={option.option_id}
               value={option.option_order}
-              control={<Radio />}
+              control={<Radio disabled={isSubmitting || isSavingAnswer} />}
               label={option.option_text}
             />
           ))}
@@ -152,8 +213,8 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
         <Grid item>
           <Button
             variant="contained"
-            disabled={currentQuestionIndex === 0}
-            onClick={() => setCurrentQuestionIndex((prev) => prev - 1)}
+            disabled={currentQuestionIndex === 0 || isSubmitting}
+            onClick={() => handleNavigateQuestion(currentQuestionIndex - 1)}
           >
             Previous
           </Button>
@@ -162,7 +223,8 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
           <Button
             color={markedForReview.has(currentQuestion.question_id) ? 'secondary' : 'primary'}
             variant="outlined"
-            onClick={() => toggleMarkForReview(currentQuestion.question_id)}
+            onClick={() => handleMarkForReview(currentQuestion.question_id)}
+            disabled={isSubmitting}
           >
             {markedForReview.has(currentQuestion.question_id)
               ? 'Unmark for Review'
@@ -175,13 +237,15 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
               variant="contained"
               color="primary"
               onClick={() => setShowConfirmSubmit(true)}
+              disabled={isSubmitting}
             >
               Submit Test
             </Button>
           ) : (
             <Button
               variant="contained"
-              onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}
+              onClick={() => handleNavigateQuestion(currentQuestionIndex + 1)}
+              disabled={isSubmitting}
             >
               Next
             </Button>
@@ -206,8 +270,9 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
                     ? 'success'
                     : 'default'
                 }
-                onClick={() => setCurrentQuestionIndex(index)}
+                onClick={() => handleNavigateQuestion(index)}
                 sx={{ cursor: 'pointer' }}
+                disabled={isSubmitting}
               />
             </Grid>
           ))}
@@ -215,7 +280,10 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       </Paper>
 
       {/* Confirm Submit Dialog */}
-      <Dialog open={showConfirmSubmit} onClose={() => setShowConfirmSubmit(false)}>
+      <Dialog 
+        open={showConfirmSubmit} 
+        onClose={() => !isSubmitting && setShowConfirmSubmit(false)}
+      >
         <DialogTitle>Submit Test?</DialogTitle>
         <DialogContent>
           <Typography>
@@ -229,9 +297,19 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowConfirmSubmit(false)}>Cancel</Button>
-          <Button onClick={handleSubmitTest} variant="contained" color="primary">
-            Submit Test
+          <Button 
+            onClick={() => setShowConfirmSubmit(false)} 
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmitTest}
+            variant="contained"
+            color="primary"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? <CircularProgress size={24} /> : 'Submit Test'}
           </Button>
         </DialogActions>
       </Dialog>
