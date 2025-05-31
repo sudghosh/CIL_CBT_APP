@@ -101,33 +101,22 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
       target: development
-      args:
-        - NODE_ENV=development
-    environment:
-      NODE_ENV: development
-      REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
-      WATCHPACK_POLLING: "true"
-    env_file:
-      - .env.dev
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     volumes:
-      - type: bind
-        source: ./frontend
-        target: /app
-      - type: volume
-        source: node_modules
-        target: /app/node_modules
-    depends_on:
-      backend:
-        condition: service_healthy
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
     networks:
       - cil-network
-    secrets:
-      - google_client_id
+    depends_on:
+      - backend
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/health"]
       interval: 30s
@@ -143,7 +132,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 1G
-    command: npm start
 
 volumes:
   pgdata:

@@ -10,7 +10,8 @@ WORKDIR /app
 ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV \
     PATH=/app/node_modules/.bin:$PATH \
-    CI=false
+    CI=false \
+    NODE_OPTIONS="--max-old-space-size=4096"
 
 # Install dependencies for build
 RUN apk add --no-cache python3 make g++ \
@@ -25,7 +26,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --only=production --no-audit
 
 # Copy source files
-COPY --chown=node:node . .
+COPY . .
 
 # Build the application
 RUN npm run build
@@ -33,10 +34,8 @@ RUN npm run build
 # Development stage
 FROM node:18-alpine AS development
 
-# Set working directory
+# Set working directory and create non-root user
 WORKDIR /app
-
-# Create non-root user
 RUN addgroup -g 1001 appgroup && \
     adduser -D -u 1001 -G appgroup appuser
 
@@ -46,18 +45,17 @@ ENV NODE_ENV=development \
     PATH=/app/node_modules/.bin:$PATH \
     CI=false
 
-# Install development dependencies
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copy package files with correct ownership
+COPY --chown=appuser:appgroup package*.json ./
+COPY --chown=appuser:appgroup tsconfig.json ./
 
+# Install dependencies with cache and set ownership
 RUN --mount=type=cache,target=/root/.npm \
-    npm install
+    npm install && \
+    chown -R appuser:appgroup node_modules
 
-# Copy source code
+# Copy source code with correct ownership
 COPY --chown=appuser:appgroup . .
-
-# Set proper permissions
-RUN chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
@@ -75,24 +73,21 @@ CMD ["npm", "start", "--", "--host", "0.0.0.0"]
 # Production stage
 FROM nginx:alpine AS production
 
-# Install required tools
-RUN apk add --no-cache curl
-
-# Create non-root user
-RUN addgroup -g 1001 appgroup && \
+# Install required tools and create non-root user
+RUN apk add --no-cache curl && \
+    addgroup -g 1001 appgroup && \
     adduser -D -u 1001 -G appgroup appuser
 
 # Copy nginx configuration
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chown=appuser:appgroup nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets from builder
 COPY --from=builder --chown=appuser:appgroup /app/build /usr/share/nginx/html
 
 # Set proper permissions
-RUN chown -R appuser:appgroup /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html
+RUN chmod -R 755 /usr/share/nginx/html
 
-# Switch to non-root user for nginx
+# Switch to non-root user
 USER appuser
 
 # Health check
@@ -104,609 +99,3 @@ EXPOSE 3000
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-COPY . .
-RUN npm run build
-EXPOSE 3000
