@@ -1,3 +1,4 @@
+# docker-compose.dev.yml
 version: '3.8'
 
 # Common configurations
@@ -17,23 +18,29 @@ x-healthcheck-config: &default-healthcheck
 services:
   postgres:
     image: postgres:15-alpine
+    container_name: cil_hr_postgres
     environment:
+      # Hardcoding these essential variables directly for robustness
       POSTGRES_USER: cildb
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_PASSWORD: cildb123
       POSTGRES_DB: cil_cbt_db
       PGDATA: /var/lib/postgresql/data/pgdata
+      LANG: en_US.utf8
+      LC_ALL: en_US.utf8
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    # Removed env_file from postgres service, as variables are now hardcoded
     ports:
       - "5432:5432"
     volumes:
       - type: volume
         source: pgdata
         target: /var/lib/postgresql/data
+      - ./backend/init:/docker-entrypoint-initdb.d
     networks:
       - cil-network
-    secrets:
-      - db_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cildb"]
+      # Update healthcheck to use hardcoded values
+      test: ["CMD-SHELL", "pg_isready -U cildb -d cil_cbt_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,22 +54,24 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+    command: sh -c "env | grep POSTGRES_PASSWORD && env | grep POSTGRES_USER && env | grep POSTGRES_DB && /usr/local/bin/docker-entrypoint.sh postgres"
 
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
       args:
-        - NODE_ENV=development
+        NODE_ENV: development
+    env_file:
+      - ./.env.dev
     environment:
-      DATABASE_URL: postgresql://cildb:${DB_PASSWORD}@postgres:5432/cil_cbt_db
       SECRET_KEY_FILE: /run/secrets/secret_key
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
       GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
       GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-    env_file:
-      - .env.dev
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     ports:
       - "8000:8000"
     volumes:
@@ -96,7 +105,7 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    command: uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+    command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python /app/init_db.py && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000"
 
   frontend:
     build:
@@ -110,9 +119,10 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - REACT_APP_API_URL=http://localhost:8000
-      - WATCHPACK_POLLING=true
-      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID}
+      - WATCHPACK_POLLING=${WATCHPACK_POLLING}
+      - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING}
     networks:
       - cil-network
     depends_on:
@@ -154,8 +164,6 @@ networks:
         - subnet: 172.20.0.0/16
 
 secrets:
-  db_password:
-    file: ./secrets/db_password.txt
   secret_key:
     file: ./secrets/secret_key.txt
   google_client_id:
