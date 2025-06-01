@@ -1,9 +1,7 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
-
-Base = declarative_base()
+from .database import Base
 
 class User(Base):
     __tablename__ = "users"
