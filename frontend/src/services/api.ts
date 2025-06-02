@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { handleAPIError, APIError } from '../utils/errorHandler';
+import { handleAPIError, APIError, logError } from '../utils/errorHandler';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -26,25 +26,52 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Add timeout to prevent hanging requests
+  timeout: 20000,
 });
 
 // Add token to requests if it exists
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // Log outgoing requests in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, config);
+    }
+    
+    return config;
+  },
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 // Add error handling interceptor with detailed error messages
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API Response: ${response.status} ${response.config.url}`, response.data);
+    }
+    return response;
+  },
   (error) => {
+    // Log the error with context
+    logError(error, {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+    });
+    
     // Handle different types of errors
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      window.location.href = '/login?session_expired=true';
       throw new APIError('Your session has expired. Please log in again.', 401);
     }
     if (error.response?.status === 403) {
@@ -70,6 +97,8 @@ export const authAPI = {
     api.put(`/auth/users/${userId}/status`, { is_active: isActive }),
   updateUserRole: (userId: number, role: string) =>
     api.put(`/auth/users/${userId}/role`, { role }),
+  // Health check for API
+  healthCheck: () => api.get('/health'),
 };
 
 // Questions API

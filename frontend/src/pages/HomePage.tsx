@@ -13,13 +13,13 @@ export const HomePage: React.FC = () => {
       title: 'Take Mock Test',
       description: 'Start a full-length mock test that simulates the actual CIL CBT environment',
       icon: <Assignment fontSize="large" />,
-      action: () => navigate('/tests/mock'),
+      action: () => navigate('/mock-test'),
     },
     {
       title: 'Practice Tests',
       description: 'Create custom practice tests by selecting specific sections and topics',
       icon: <Assessment fontSize="large" />,
-      action: () => navigate('/tests/practice'),
+      action: () => navigate('/practice-test'),
     },
     {
       title: 'View Results',
@@ -34,13 +34,13 @@ export const HomePage: React.FC = () => {
       title: 'Manage Questions',
       description: 'Add, edit, or upload questions to the question bank',
       icon: <Assignment fontSize="large" />,
-      action: () => navigate('/questions'),
+      action: () => navigate('/manage/questions'),
     },
     {
       title: 'Manage Users',
       description: 'View and manage user access to the application',
       icon: <Assessment fontSize="large" />,
-      action: () => navigate('/users'),
+      action: () => navigate('/manage/users'),
     },
   ];
 
