@@ -7,7 +7,7 @@ import os
 from ..database.database import get_db
 from ..database.models import User, AllowedEmail
 from ..auth.auth import create_access_token, verify_token, verify_admin
-from datetime import timedelta
+from datetime import timedelta, datetime
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -195,6 +195,88 @@ async def google_auth_callback(token_info: GoogleTokenInfo, request: Request, db
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(verify_token)):
     return current_user
+
+# Special development mode endpoint for local testing
+# This should only be used in development environment
+@router.post("/dev-login")
+async def dev_login(db: Session = Depends(get_db)):
+    # Check if we're in development mode (could be checked via environment variable)
+    # For security, ensure this endpoint is disabled in production
+    if os.getenv("ENV") != "development" and os.getenv("ENV") != "dev":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Development login is only available in development environment"
+        )
+    
+    # Use a mock admin user for development
+    dev_email = "dev@example.com"
+    
+    try:
+        # Check if dev user exists, create if not
+        user = db.query(User).filter(User.email == dev_email).first()
+        if not user:
+            user = User(
+                email=dev_email,
+                google_id="dev-google-id",
+                first_name="Development",
+                last_name="User",
+                role="Admin", 
+                is_active=True
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            print(f"Development user created with email: {dev_email}")
+            
+            # Add to whitelist
+            allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == dev_email).first()
+            if not allowed_email:
+                allowed_email = AllowedEmail(
+                    email=dev_email,
+                    added_by_admin_id=user.user_id
+                )
+                db.add(allowed_email)
+                db.commit()
+                print(f"Development email {dev_email} added to whitelist.")
+        else:
+            print(f"Using existing development user: {dev_email}")
+    
+        # Create a special development token with very long expiration
+        access_token_expires = timedelta(days=30)  # 30 days for dev
+        access_token = create_access_token(
+            data={"sub": dev_email},
+            expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        print(f"Error in development login: {str(e)}")
+        db.rollback()  # Ensure we don't leave transactions hanging
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Development login failed: {str(e)}"
+        )
+
+@router.get("/dev-validate")
+async def dev_validate(db: Session = Depends(get_db)):
+    """
+    A simple endpoint to validate dev mode is working.
+    This is helpful for troubleshooting development authentication.
+    """
+    # Only allowed in development
+    if os.getenv("ENV") != "development" and os.getenv("ENV") != "dev":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Development validation is only available in development environment"
+        )
+    
+    # Return development environment information
+    return {
+        "status": "active", 
+        "mode": "development",
+        "dev_email": "dev@example.com",
+        "timestamp": str(datetime.now())
+    }
 
 @router.get("/users", response_model=list[UserResponse])
 async def get_users(

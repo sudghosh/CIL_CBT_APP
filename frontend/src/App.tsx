@@ -14,6 +14,8 @@ import { UserManagement } from './pages/UserManagement';
 import HealthCheck from './pages/HealthCheck';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { authAPI } from './services/api';
+import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
+import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
 
 // Create theme with better accessibility and consistent styling
 const theme = createTheme({
@@ -53,9 +55,42 @@ const theme = createTheme({
 });
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshAuthStatus } = useAuth();
+  const [isVerifying, setIsVerifying] = useState(false);
+  
+  // Check token validity when accessing protected routes
+  useEffect(() => {
+    // Prevent refreshing auth status on every re-render
+    // Only do it when necessary (no user or first time accessing a protected route)
+    const token = localStorage.getItem('token');
+    const authCheckInterval = 5 * 60 * 1000; // 5 minutes
+    
+    // Skip authentication check if:
+    // 1. We already have authentication cached
+    // 2. We've checked recently (within 5 minutes)
+    // 3. We're in development mode with dev token
+    if (token && user && (!shouldReauthenticate() || timeSinceLastAuthCheck() < authCheckInterval)) {
+      // No need to verify
+      return;
+    }
+    
+    // Otherwise, perform authentication check
+    if (token) {
+      setIsVerifying(true);
+      refreshAuthStatus().then(success => {
+        if (success && user) {
+          // Cache the authentication result for better performance
+          cacheAuthState(user);
+        }
+      }).finally(() => {
+        setIsVerifying(false);
+        // Record that we performed an auth check
+        recordAuthCheck();
+      });
+    }
+  }, [user, refreshAuthStatus]);
 
-  if (loading) {
+  if (loading || isVerifying) {
     return (
       <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LinearProgress sx={{ width: '50%', mb: 2 }} />
@@ -65,6 +100,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!user) {
+    // Save the current URL for redirecting back after login
+    sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
     return <Navigate to="/login" replace />;
   }
 
@@ -72,18 +109,78 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, refreshAuthStatus } = useAuth();
+  const [isVerifying, setIsVerifying] = useState(false);
+    // The recordAdminCheck function is already imported at the top of the file
+  
+  // Refresh auth status when accessing admin routes to ensure fresh token validation
+  useEffect(() => {
+    // Track if component is mounted
+    let isMounted = true;
+    
+    async function verifyAuth() {
+      if (!user) {
+        if (isMounted) setIsVerifying(false);
+        return;
+      }
+      
+      // Check if we need to re-verify admin status
+      // Use optimization helpers to determine if reauth is needed
+      const adminCheckInterval = 2 * 60 * 1000; // 2 minutes
+      const lastAdminCheck = sessionStorage.getItem('lastAdminCheck');
+      const now = Date.now();
+      const timeSinceLastCheck = lastAdminCheck ? (now - parseInt(lastAdminCheck, 10)) : Infinity;
+      
+      // Skip check if:
+      // 1. We already verified this is an admin from cache
+      // 2. We checked recently
+      // 3. We're in development mode with dev token
+      if (!shouldReauthenticate(true) || timeSinceLastCheck < adminCheckInterval) {
+        // No need to verify again
+        return;
+      }
+      
+      // Otherwise perform admin verification
+      if (isMounted) setIsVerifying(true);
+        
+      try {
+        // Double check authentication status for admin routes
+        await refreshAuthStatus();
+        if (user && isAdmin) {
+          // Cache the admin status for future checks
+          cacheAuthState({...user, isVerifiedAdmin: true});
+        }
+        // Record that we checked
+        recordAdminCheck();
+      } finally {
+        if (isMounted) setIsVerifying(false);
+      }
+    }
+    
+    verifyAuth();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
+  }, [user, refreshAuthStatus, isAdmin]);
 
-  if (loading) {
+  if (loading || isVerifying) {
     return (
       <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Loading your profile...</Typography>
+        <Typography variant="body1">Verifying administrator access...</Typography>
       </Box>
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!user) {
+    // Save the current URL for redirecting back after login
+    sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (!isAdmin) {
     return <Navigate to="/" replace />;
   }
 
@@ -92,28 +189,66 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
 
 const App: React.FC = () => {
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
-  const [apiHealth, setApiHealth] = useState<boolean | null>(null);
-
+  const [apiHealth, setApiHealth] = useState<boolean | null>(null);  
+  
   // Check API health on startup
   useEffect(() => {
+    // Add flag to track if component is still mounted
+    let isMounted = true;
+
+    // Check if health was already verified in this session or the last 10 minutes
+    const cachedHealth = sessionStorage.getItem('apiHealthChecked');
+    const lastCheck = sessionStorage.getItem('apiHealthLastChecked');
+    const now = Date.now();
+    const tenMinutes = 10 * 60 * 1000; // 10 minutes in milliseconds
+    
+    if (cachedHealth === 'true' && lastCheck && (now - parseInt(lastCheck)) < tenMinutes) {
+      console.log('Using cached API health status from the last 10 minutes');
+      setApiHealth(true);
+      return;
+    }
+    
     const checkApiHealth = async () => {
       try {
+        // Only attempt health check once per session
         await authAPI.healthCheck();
-        setApiHealth(true);
-        console.log('API is healthy');
+        if (isMounted) {
+          setApiHealth(true);
+          // Store health check result with timestamp
+          sessionStorage.setItem('apiHealthChecked', 'true');
+          sessionStorage.setItem('apiHealthLastChecked', now.toString());
+          console.log('API is healthy');
+        }
       } catch (error) {
         console.error('API Health check failed:', error);
-        setApiHealth(false);
+        if (isMounted) {
+          // If we're in development mode, fake a successful health check
+          if (process.env.NODE_ENV === 'development') {
+            console.log('In development mode, proceeding despite health check failure');
+            setApiHealth(true);
+            sessionStorage.setItem('apiHealthChecked', 'true');
+            sessionStorage.setItem('apiHealthLastChecked', now.toString());
+          } else {
+            setApiHealth(false);
+          }
+        }
       }
     };
     
+    // Only check health once when the component mounts
     checkApiHealth();
     
     // Log environment information to help with debugging
     console.log('Environment:', process.env.NODE_ENV);
     console.log('API URL:', process.env.REACT_APP_API_URL);
     console.log('Google Client ID configured:', !!clientId);
-  }, [clientId]);
+    
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
+    // Don't add clientId to dependency array to avoid repeated checks
+  }, []);
 
   if (!clientId) {
     return (
@@ -130,6 +265,23 @@ const App: React.FC = () => {
       </ThemeProvider>
     );
   }
+  // Show loading indicator while initial API health check is in progress
+  if (apiHealth === null) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <LinearProgress sx={{ width: '50%', mb: 3 }} />
+          <Typography variant="h5" gutterBottom>
+            Initializing CIL CBT Application
+          </Typography>
+          <Typography variant="body1" color="textSecondary">
+            Please wait while we connect to the server...
+          </Typography>
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   if (apiHealth === false) {
     return (
@@ -139,8 +291,11 @@ const App: React.FC = () => {
           <Typography variant="h5" color="error" gutterBottom>
             API Connection Error
           </Typography>
-          <Typography variant="body1">
+          <Typography variant="body1" gutterBottom>
             Cannot connect to the API server. Please check that the backend service is running.
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+            If you're running in development mode, try restarting the backend server.
           </Typography>
         </Box>
       </ThemeProvider>

@@ -4,6 +4,7 @@ import { GoogleLogin, CredentialResponse, GoogleOAuthProvider } from '@react-oau
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logError } from '../utils/errorHandler';
+import { DEV_TOKEN, isDevMode } from '../utils/devMode';
 
 export const LoginPage: React.FC = (): JSX.Element => {
   const { login, error: authError, clearError } = useAuth();
@@ -29,45 +30,134 @@ export const LoginPage: React.FC = (): JSX.Element => {
       setError('Your session has expired. Please log in again.');
     }
   }, [location]);
-
+  
   // Development bypass login
   const handleDevLogin = async () => {
     try {
-      setLoading(true);
+      // Check if we already have a token - avoid duplicate login attempts
+      const existingToken = localStorage.getItem('token');
+      if (existingToken === DEV_TOKEN) {
+        console.log('Already logged in with development token');
+        
+        // Still navigate to appropriate page
+        const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+        if (redirectUrl) {
+          console.log(`Redirecting to saved URL: ${redirectUrl}`);
+          sessionStorage.removeItem('redirectAfterLogin');
+          navigate(redirectUrl);
+        } else {
+          console.log('Redirecting to home page');
+          navigate('/');
+        }
+        
+        return;
+      }      setLoading(true);
       setError(null);
+      console.log('Attempting development login bypass...');
       
-      // Create a mock token for development
-      const mockToken = 'dev-token-for-testing';
-      
+      // Try to fetch a token from the backend's development endpoint
       try {
-        await login({ token: mockToken });
-        navigate('/');
+        // First attempt to use the backend's dev login endpoint with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+        
+        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/auth/dev-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Development login succeeded via backend endpoint');
+          localStorage.setItem('token', data.access_token);
+          await login({ token: data.access_token });
+          
+          // Redirect after successful login
+          const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+          if (redirectUrl) {
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(redirectUrl);
+          } else {
+            navigate('/');
+          }
+        } else {
+          throw new Error(`Backend dev login failed with status: ${response.status}`);
+        }
       } catch (err) {
-        console.error('Development login failed, trying direct navigation');
-        // Force navigation even if login fails in development
-        localStorage.setItem('token', 'dev-token-for-testing');
-        navigate('/');
-        window.location.reload();
-      }
-    } catch (err: any) {
-      setError('Development login failed');
+        console.warn('Backend dev login failed, using client-side dev token');
+        
+        try {
+          // Store the dev token in localStorage
+          localStorage.setItem('token', DEV_TOKEN);
+          
+          // Use the login function to set up auth context properly
+          await login({ token: DEV_TOKEN });
+          console.log('Development login completed with client-side token');
+          
+          // Redirect appropriately
+          const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+          if (redirectUrl) {
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(redirectUrl);
+          } else {
+            navigate('/');
+          }
+        } catch (clientErr) {
+          console.error('Client-side dev login failed:', clientErr);
+          throw clientErr; // Propagate the error to the outer catch
+        }
+      }    } catch (err: any) {
+      console.error('Development login failed completely:', err);
+      setError('Development login failed. Please try again or check console for errors.');
     } finally {
       setLoading(false);
     }
   };
-
+  
   // Auto-login in development mode - comment this out if you want to see the login page
   useEffect(() => {
-    const isDevMode = process.env.NODE_ENV === 'development';
-    const urlParams = new URLSearchParams(window.location.search);
-    const skipAutoLogin = urlParams.get('noautologin') === 'true';
+    // Only execute once when component mounts to prevent flickering
+    const token = localStorage.getItem('token');
+    const hasLoggedIn = token === DEV_TOKEN || (token && token.length > 0);
+    const hasAttemptedAutoLogin = sessionStorage.getItem('devLoginAttempted') === 'true';
     
-    if (isDevMode && !skipAutoLogin) {
-      console.log('Auto-logging in with development account...');
-      handleDevLogin();
+    if (isDevMode() && !hasLoggedIn && !hasAttemptedAutoLogin && !loading) {
+      // Skip auto-login if query param is set
+      const params = new URLSearchParams(window.location.search);      const skipAutoLogin = params.get('noautologin') === 'true';
+      if (!skipAutoLogin) {
+        console.log('Auto-logging in with development account...');
+        // Mark that we've attempted auto-login to prevent duplicate attempts
+        sessionStorage.setItem('devLoginAttempted', 'true');
+        
+        // Clear any previous session data to avoid conflicts
+        if (sessionStorage.getItem('authError')) {
+          sessionStorage.removeItem('authError');
+        }
+        
+        // Add a small delay to ensure all components are mounted
+        const timer = setTimeout(() => {
+          handleDevLogin();
+        }, 500);
+        
+        return () => {
+          clearTimeout(timer);
+          // This ensures we can try again if the user logs out and comes back
+          // Only reset if we're actually navigating away, not on component updates
+          if (window.location.pathname !== '/login') {
+            sessionStorage.removeItem('devLoginAttempted');
+          }
+        };
+      }
     }
+    
+    // Return empty cleanup function for cases where no timer was set
+    return () => {};
   }, []);
-
   const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
       setLoading(true);
@@ -79,7 +169,26 @@ export const LoginPage: React.FC = (): JSX.Element => {
       }
 
       await login({ token: credentialResponse.credential });
-      navigate('/');
+      
+      // Check if we need to redirect to a specific page after login
+      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectUrl) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectUrl);
+      } else {
+        // Default redirect to home
+        navigate('/');
+      }
+      
+      // Display any stored auth error messages
+      const authErrorMsg = sessionStorage.getItem('authError');
+      if (authErrorMsg) {
+        sessionStorage.removeItem('authError');
+        // Use a setTimeout to ensure the error appears after navigation
+        setTimeout(() => {
+          setError(authErrorMsg);
+        }, 100);
+      }
     } catch (err: any) {
       logError(err, { context: 'Google login success handler' });
       setError(err.response?.data?.detail || err.message || 'Failed to login');
