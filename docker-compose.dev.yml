@@ -46,14 +46,7 @@ services:
       retries: 5
       start_period: 10s
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+    # Removed memory limits to allow Docker to allocate as needed
     command: sh -c "env | grep POSTGRES_PASSWORD && env | grep POSTGRES_USER && env | grep POSTGRES_DB && /usr/local/bin/docker-entrypoint.sh postgres"
 
   backend:
@@ -97,14 +90,7 @@ services:
       retries: 3
       start_period: 10s
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+    # Removed memory limits to allow Docker to allocate as needed
     command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python /app/init_db.py && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000"
 
   frontend:
@@ -134,14 +120,7 @@ services:
       retries: 3
       start_period: 10s
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
+    # Removed memory limits to allow Docker to allocate as needed
 
 volumes:
   pgdata:
