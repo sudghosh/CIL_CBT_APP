@@ -1,12 +1,15 @@
-import React from 'react';
-import { Box, Typography, Grid, Paper, Button } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Grid, Paper, Button, Snackbar, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Assignment, Assessment, History } from '@mui/icons-material';
+import { Assignment, Assessment, History, Refresh } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { clearBrowserCache } from '../utils/cacheManager';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState('');
 
   const features = [
     {
@@ -43,6 +46,11 @@ export const HomePage: React.FC = () => {
       action: () => navigate('/manage/users'),
     },
   ];
+  const handleClearCache = () => {
+    const result = clearBrowserCache();
+    setSnackMessage(result ? 'Browser cache cleared successfully!' : 'Failed to clear browser cache');
+    setSnackOpen(true);
+  };
 
   return (
     <Box>
@@ -52,6 +60,18 @@ export const HomePage: React.FC = () => {
       <Typography variant="subtitle1" gutterBottom color="textSecondary">
         Practice and prepare for your Coal India Limited Computer Based Test
       </Typography>
+      
+      {isAdmin && (
+        <Button 
+          variant="outlined" 
+          color="secondary" 
+          startIcon={<Refresh />}
+          onClick={handleClearCache}
+          sx={{ mt: 1, mb: 2 }}
+        >
+          Clear Browser Cache
+        </Button>
+      )}
 
       <Box sx={{ mt: 4 }}>
         <Typography variant="h6" gutterBottom>
@@ -137,7 +157,16 @@ export const HomePage: React.FC = () => {
             ))}
           </Grid>
         </Box>
-      )}
+      )}      <Snackbar 
+        open={snackOpen} 
+        autoHideDuration={6000} 
+        onClose={() => setSnackOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackOpen(false)} severity="success" sx={{ width: '100%' }}>
+          {snackMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

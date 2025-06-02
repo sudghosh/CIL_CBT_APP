@@ -36,18 +36,55 @@ export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [emailToAdd, setEmailToAdd] = useState('');
-
   useEffect(() => {
     fetchUsers();
+    
+    // Add event listener for auth status changes
+    window.addEventListener('auth-status-changed', fetchUsers);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('auth-status-changed', fetchUsers);
+    };
   }, []);
-
+  
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      // Check if token exists
+      const token = localStorage.getItem('token');
+      console.log('Token when fetching users:', token ? 'Token exists' : 'No token');
+      
+      if (!token) {
+        setError('You must be logged in to access this page.');
+        setLoading(false);
+        return;
+      }
+      
       const response = await authAPI.getUsers();
       setUsers(response.data);
+      setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load users');
+      console.error('Error fetching users:', err);
+      
+      // Handle unauthorized errors
+      if (err.status === 401 || err.response?.status === 401) {
+        setError('Authentication error. Please try logging out and back in.');
+        
+        // Save current URL to return after login
+        sessionStorage.setItem('redirectAfterLogin', '/manage/users');
+        
+        // Store error message in sessionStorage to display after redirect
+        sessionStorage.setItem('authError', 'Your session has expired. Please log in again.');
+        
+        // Redirect to login page after a short delay to allow error message to be seen
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          window.location.href = '/login?session_expired=true';
+        }, 1500);
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Failed to load users');
+      }
     } finally {
       setLoading(false);
     }

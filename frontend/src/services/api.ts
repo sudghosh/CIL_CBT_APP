@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { handleAPIError, APIError, logError } from '../utils/errorHandler';
+import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -34,12 +35,24 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) {
+    
+    // Handle development token specially
+    if (token && isDevToken(token) && isDevMode()) {
+      console.log(`Using development token for request: ${config.method?.toUpperCase()} ${config.url}`);
       config.headers.Authorization = `Bearer ${token}`;
+      config.headers['X-Dev-Mode'] = 'true';
+    } else if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      // Log token being used (hide actual value in production)
+      if (isDevMode()) {
+        console.log(`Using token for request: ${token.substring(0, 10)}...`);
+      }
+    } else {
+      console.warn(`No token found for API request to ${config.url}`);
     }
     
     // Log outgoing requests in development
-    if (process.env.NODE_ENV === 'development') {
+    if (isDevMode()) {
       console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, config);
     }
     
@@ -55,23 +68,74 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     // Log successful responses in development
-    if (process.env.NODE_ENV === 'development') {
+    if (isDevMode()) {
       console.log(`API Response: ${response.status} ${response.config.url}`, response.data);
     }
     return response;
-  },
-  (error) => {
+  },  (error) => {
+    // Check if this is a development environment with a dev token
+    const token = localStorage.getItem('token');
+    const isDevTokenRequest = token && isDevToken(token) && isDevMode();
+    
+    // In dev mode with dev token, we'll mock successful responses for certain endpoints
+    if (isDevTokenRequest && error.config) {
+      const url = error.config.url || '';
+      
+      // For development mode with dev token, bypass certain API errors
+      // This allows the app to function even if the backend is missing endpoints
+      if (url.includes('/auth/me')) {
+        console.warn('Mocking /auth/me response in development mode');
+        return Promise.resolve({
+          data: {
+            user_id: 1,
+            email: 'dev@example.com',
+            first_name: 'Development',
+            last_name: 'User',
+            role: 'Admin',
+            is_active: true
+          },
+          status: 200
+        });
+      }
+      
+      // Also mock the health endpoint for development mode to prevent excessive API calls
+      if (url.includes('/health')) {
+        console.warn('Mocking health check response in development mode');
+        return Promise.resolve({
+          data: {
+            status: 'healthy',
+            database: 'connected',
+            mode: 'development-mock'
+          },
+          status: 200
+        });
+      }
+    }
+    
     // Log the error with context
     logError(error, {
       url: error.config?.url,
       method: error.config?.method,
       status: error.response?.status,
+      devMode: isDevMode(),
+      devToken: isDevTokenRequest
     });
+    
+    // Get the current URL path
+    const currentPath = window.location.pathname;
     
     // Handle different types of errors
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login?session_expired=true';
+      
+      // Don't redirect to login if we're already on the login page
+      // This prevents infinite redirect loops
+      if (!currentPath.includes('/login')) {
+        // Store the current path to redirect back after login
+        sessionStorage.setItem('redirectAfterLogin', currentPath);
+        window.location.href = '/login?session_expired=true';
+      }
+      
       throw new APIError('Your session has expired. Please log in again.', 401);
     }
     if (error.response?.status === 403) {
@@ -94,11 +158,30 @@ export const authAPI = {
   getUsers: () => api.get('/auth/users'),
   whitelistEmail: (email: string) => api.post('/auth/whitelist-email', { email }),
   updateUserStatus: (userId: number, isActive: boolean) => 
-    api.put(`/auth/users/${userId}/status`, { is_active: isActive }),
-  updateUserRole: (userId: number, role: string) =>
+    api.put(`/auth/users/${userId}/status`, { is_active: isActive }),  updateUserRole: (userId: number, role: string) =>
     api.put(`/auth/users/${userId}/role`, { role }),
-  // Health check for API
-  healthCheck: () => api.get('/health'),
+  // Health check for API with caching to prevent excessive requests
+  healthCheck: () => {
+    // Get current timestamp
+    const now = Date.now();
+    // Only call health check API once per minute max
+    const lastCheck = parseInt(sessionStorage.getItem('lastHealthCheck') || '0', 10);
+    
+    if (now - lastCheck < 30000) { // 30 seconds
+      console.log('Using cached health check result');
+      const cachedResult = sessionStorage.getItem('healthCheckResult');
+      return Promise.resolve(JSON.parse(cachedResult || '{"status":"cached"}'));
+    }
+    
+    // Store timestamp of this check
+    sessionStorage.setItem('lastHealthCheck', now.toString());
+    
+    // Make actual API call
+    return api.get('/health').then(response => {
+      sessionStorage.setItem('healthCheckResult', JSON.stringify(response.data));
+      return response;
+    });
+  },
 };
 
 // Questions API

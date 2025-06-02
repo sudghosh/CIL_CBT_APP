@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { logError } from '../utils/errorHandler';
+import { isTokenExpired } from '../utils/cacheManager';
+import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
+import { validateToken, getUserFromToken } from '../utils/tokenUtils';
 
 interface User {
   user_id: number;
@@ -19,6 +22,7 @@ interface AuthContextType {
   logout: () => void;
   isAdmin: boolean;
   clearError: () => void;
+  refreshAuthStatus: () => Promise<boolean>;
 }
 
 // Create a mock user for development purposes
@@ -35,64 +39,128 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);  const [error, setError] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   const clearError = () => setError(null);
-
-  // Handle session initialization on mount
+  
+  // Handle session initialization on mount  
   useEffect(() => {
+    // Add a flag to track if the component is still mounted
+    let isMounted = true;
+    
     const initializeAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setLoading(false);
-        setAuthChecked(true);
-        return;
-      }
-
-      // If token is our development token, use mock user
-      if (token === 'dev-token-for-testing') {
-        console.log('Using development user account');
-        setUser(mockUser);
-        setLoading(false);
-        setAuthChecked(true);
-        return;
-      }
-
       try {
-        const response = await authAPI.getCurrentUser();
-        console.log('Current user:', response.data);
-        setUser(response.data);
-        setError(null);
-      } catch (err: any) {
-        console.error('Error fetching current user:', err);
-        localStorage.removeItem('token');
-        setUser(null);
-        // Don't show an error on initial load if token expired
-        // setError('Session expired. Please log in again.');
-      } finally {
-        setLoading(false);
-        setAuthChecked(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.log('No token found in localStorage');
+          if (isMounted) {
+            setLoading(false);
+            setAuthChecked(true);
+          }
+          return;
+        }
+
+        console.log(`Found token in localStorage: ${token.substring(0, 10)}...`);
+        
+        // If token is our development token, use mock user
+        if (isDevToken(token) && isDevMode()) {
+          console.log('Using development user account');
+          if (isMounted) {
+            setUser(mockUser);
+            setLoading(false);
+            setAuthChecked(true);
+          }
+          
+          // Create a custom event to notify that authentication is complete
+          const authEvent = new CustomEvent('auth-status-changed', { 
+            detail: { authenticated: true, user: mockUser } 
+          });
+          window.dispatchEvent(authEvent);
+          
+          // Store a flag to prevent repeated auth checks during the session
+          sessionStorage.setItem('devAuthInitialized', 'true');
+          return;
+        }
+
+        try {
+          // Verify token validity by making a request to getCurrentUser
+          const response = await authAPI.getCurrentUser();
+          console.log('Current user:', response.data);
+          if (isMounted) {
+            setUser(response.data);
+            setError(null);
+          }
+        } catch (err: any) {
+          console.error('Error fetching current user:', err);
+          // Check if it's an authentication error (401)
+          if (err.status === 401 || err.response?.status === 401) {
+            console.log('Token is invalid or expired. Clearing token from localStorage.');
+            localStorage.removeItem('token');
+            // Don't show an error on initial load if token expired
+            // setError('Session expired. Please log in again.');
+          } else {
+            // For other errors, keep the token but show the error
+            if (isMounted) {
+              setError(`Error initializing session: ${err.message}`);
+            }
+          }
+          if (isMounted) {
+            setUser(null);
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+            setAuthChecked(true);
+          }
+        }
+      } catch (error) {
+        console.error("Error during auth initialization:", error);
+        if (isMounted) {
+          setLoading(false);
+          setAuthChecked(true);
+        }
       }
     };
 
     initializeAuth();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
   // Handle Google login
   const login = async (tokenInfo: { token: string }) => {
     try {
       setLoading(true);
       setError(null);
       console.log('Attempting login with token:', tokenInfo.token ? 'Token provided' : 'No token');
-      
+        
       // Handle development token
-      if (tokenInfo.token === 'dev-token-for-testing') {
+      if (isDevToken(tokenInfo.token)) {
         console.log('Using development login');
-        localStorage.setItem('token', tokenInfo.token);
-        setUser(mockUser);
+        
+        try {
+          // First try to get user information using the token
+          const userResponse = await authAPI.getCurrentUser();
+          console.log('Development user data retrieved:', userResponse.data);
+          setUser(userResponse.data);
+        } catch (err) {
+          console.log('Could not get user with dev token, using mock user');
+          // If API call fails, use mock user
+          localStorage.setItem('token', DEV_TOKEN);
+          setUser(mockUser);
+        }
+        
         setError(null);
+        
+        // Create a custom event to notify that authentication is complete
+        const authEvent = new CustomEvent('auth-status-changed', {
+          detail: { authenticated: true, user: mockUser }
+        });
+        window.dispatchEvent(authEvent);
+        
         return;
       }
 
@@ -133,13 +201,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  };
-
-  const logout = () => {
+  };  const logout = () => {
     localStorage.removeItem('token');
-    setUser(null);
-    // Optionally redirect to login page
+    setUser(null);    // Optionally redirect to login page
     // window.location.href = '/login';
+  };
+  
+  const refreshAuthStatus = async (): Promise<boolean> => {
+    const token = localStorage.getItem('token');
+    
+    // No token case
+    if (!token) {
+      console.log('No token found during refresh');
+      setUser(null);
+      setLoading(false);
+      return false;
+    }
+    
+    // Check if we're using the development token
+    if (isDevToken(token) && isDevMode()) {
+      console.log('Using development user with mocked token');
+      setUser(mockUser);
+      setError(null);
+      setLoading(false);
+      return true;
+    }
+    
+    // Check token expiration
+    try {
+      if (isTokenExpired(token)) {
+        console.log('Token expired during refresh');
+        setUser(null);
+        setLoading(false);
+        return false;
+      }
+    } catch (err) {
+      console.error('Error checking token expiration, treating as expired:', err);
+      setUser(null);
+      setLoading(false);
+      return false;
+    }
+    
+    try {
+      setLoading(true);
+      const response = await authAPI.getCurrentUser();
+      setUser(response.data);
+      setError(null);
+      console.log('Auth status refreshed successfully');
+      return true;
+    } catch (err: any) {
+      console.error('Failed to refresh auth status:', err);
+      if (err.status === 401 || err.response?.status === 401) {
+        localStorage.removeItem('token');
+        setUser(null);
+      }
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const isAdmin = user?.role === 'Admin';
@@ -148,9 +267,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   if (!authChecked && loading) {
     return <div>Initializing application...</div>;
   }
-
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, isAdmin, clearError }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      error, 
+      login, 
+      logout, 
+      isAdmin, 
+      clearError, 
+      refreshAuthStatus 
+    }}>
       {children}
     </AuthContext.Provider>
   );
