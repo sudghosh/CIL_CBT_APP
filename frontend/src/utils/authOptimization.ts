@@ -16,21 +16,37 @@ import { isAuthenticatedFromCache, getCachedUser, isAdminFromCache } from './aut
  * @returns Boolean indicating if re-auth is needed
  */
 export const shouldReauthenticate = (forAdmin: boolean = false): boolean => {
-  // Always have cached values for development mode
-  if (isDevMode() && localStorage.getItem('token') === 'dev-token-for-testing') {
+  const token = localStorage.getItem('token');
+  
+  // Always log the current state for debugging
+  console.log('[DEBUG] shouldReauthenticate check:', { 
+    forAdmin, 
+    hasToken: !!token,
+    isDevEnv: isDevMode(),
+    isDevTokenPresent: token && isDevToken(token),
+    isAuthCached: isAuthenticatedFromCache(),
+    isAdminCached: isAdminFromCache() 
+  });
+  
+  // For development mode with dev token, always skip re-authentication
+  if (isDevMode() && token && isDevToken(token)) {
+    console.log('[DEBUG] Dev mode with dev token detected, skipping re-auth');
     return false; // No need to re-auth in dev mode with dev token
   }
   
-  // Check cache first
+  // Check auth cache first
   if (isAuthenticatedFromCache()) {
-    // For admin routes, also check admin cache
+    // For admin routes, also verify admin cache
     if (forAdmin) {
-      return !isAdminFromCache();
+      const hasAdminAccess = isAdminFromCache();
+      console.log('[DEBUG] Admin route check, isAdmin from cache:', hasAdminAccess);
+      return !hasAdminAccess;
     }
     return false; // No need to re-auth if cache is valid
   }
   
   // Default: re-auth needed
+  console.log('[DEBUG] Re-authentication is needed');
   return true;
 };
 

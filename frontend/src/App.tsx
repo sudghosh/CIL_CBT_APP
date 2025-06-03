@@ -13,9 +13,11 @@ import { QuestionManagement } from './pages/QuestionManagement';
 import { UserManagement } from './pages/UserManagement';
 import HealthCheck from './pages/HealthCheck';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { DevModeAuthFix } from './components/DevModeAuthFix';
 import { authAPI } from './services/api';
 import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
 import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
+import { isDevToken, isDevMode } from './utils/devMode';
 
 // Create theme with better accessibility and consistent styling
 const theme = createTheme({
@@ -111,7 +113,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, isAdmin, refreshAuthStatus } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
-    // The recordAdminCheck function is already imported at the top of the file
   
   // Refresh auth status when accessing admin routes to ensure fresh token validation
   useEffect(() => {
@@ -119,36 +120,63 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
     let isMounted = true;
     
     async function verifyAuth() {
+      // Always do an initial admin check when the component mounts
+      console.log('[DEBUG] AdminRoute checking authentication');
+      
       if (!user) {
+        console.log('[DEBUG] AdminRoute: No user found');
         if (isMounted) setIsVerifying(false);
         return;
       }
       
-      // Check if we need to re-verify admin status
-      // Use optimization helpers to determine if reauth is needed
-      const adminCheckInterval = 2 * 60 * 1000; // 2 minutes
+      // For dev token, immediately set admin status and exit
+      const token = localStorage.getItem('token');
+      if (token && isDevToken(token) && isDevMode()) {
+        console.log('[DEBUG] AdminRoute: Dev token detected, setting admin status');
+        // Always mark as admin in dev mode with dev token
+        const userWithAdmin = {...user, role: 'Admin', isVerifiedAdmin: true};
+        cacheAuthState(userWithAdmin);
+        
+        // Force set additional flags for development mode
+        sessionStorage.setItem('admin_check', JSON.stringify({
+          value: true,
+          expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours for dev mode
+        }));
+        sessionStorage.setItem('lastAdminCheck', Date.now().toString());
+        
+        // No need to verify for dev token
+        if (isMounted) setIsVerifying(false);
+        return; 
+      }
+      
+      const adminCheckInterval = 10 * 60 * 1000; // 10 minutes
       const lastAdminCheck = sessionStorage.getItem('lastAdminCheck');
       const now = Date.now();
       const timeSinceLastCheck = lastAdminCheck ? (now - parseInt(lastAdminCheck, 10)) : Infinity;
       
-      // Skip check if:
-      // 1. We already verified this is an admin from cache
-      // 2. We checked recently
-      // 3. We're in development mode with dev token
-      if (!shouldReauthenticate(true) || timeSinceLastCheck < adminCheckInterval) {
-        // No need to verify again
+      // Check if admin status is cached and recent
+      const adminCacheRaw = sessionStorage.getItem('admin_check');
+      const hasAdminCache = adminCacheRaw && JSON.parse(adminCacheRaw)?.value === true;
+      
+      // Skip check if we have a cached admin status that's still valid
+      if (hasAdminCache && timeSinceLastCheck < adminCheckInterval) {
+        console.log('[DEBUG] AdminRoute: Using cached admin status');
         return;
       }
       
       // Otherwise perform admin verification
       if (isMounted) setIsVerifying(true);
+      console.log('[DEBUG] AdminRoute: Verifying admin status'); 
         
       try {
         // Double check authentication status for admin routes
         await refreshAuthStatus();
         if (user && isAdmin) {
+          console.log('[DEBUG] AdminRoute: User confirmed as admin, updating cache');
           // Cache the admin status for future checks
           cacheAuthState({...user, isVerifiedAdmin: true});
+        } else {
+          console.log('[DEBUG] AdminRoute: User is not admin');
         }
         // Record that we checked
         recordAdminCheck();
@@ -189,7 +217,12 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
 
 const App: React.FC = () => {
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
-  const [apiHealth, setApiHealth] = useState<boolean | null>(null);  
+  const [apiHealth, setApiHealth] = useState<boolean | null>(null);
+  
+  // Import NavigationAuthGuard
+  const NavigationAuthGuard = React.lazy(() => import('./components/NavigationAuthGuard').then(
+    module => ({ default: module.NavigationAuthGuard })
+  ));
   
   // Check API health on startup
   useEffect(() => {
@@ -316,9 +349,14 @@ const App: React.FC = () => {
         onScriptLoadError={() => console.error('Google API script failed to load')}
       >
         <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <AuthProvider>
+          <CssBaseline />          <AuthProvider>
             <BrowserRouter>
+              {/* Dev mode auth fix button - only appears in development mode */}
+              <DevModeAuthFix />
+              {/* Auth state guard for navigation - maintains consistent auth state */}
+              <React.Suspense fallback={null}>
+                <NavigationAuthGuard />
+              </React.Suspense>
               <Routes>
                 <Route path="/health" element={<HealthCheck />} />
                 <Route path="/login" element={<LoginPage />} />
