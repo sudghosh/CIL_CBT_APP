@@ -25,14 +25,47 @@ if (process.env.NODE_ENV === 'development') {  // Add global utilities
     
     /**
      * Synchronize authentication state - fixes navigation issues
-     */
-    syncAuth: () => {
+     */    syncAuth: () => {
       console.log('🔄 Synchronizing authentication state...');
       const { user, isAdmin } = syncAuthState();
       console.log('✅ Auth state synchronized!');
       console.log(`- User authenticated: ${!!user}`);
       console.log(`- Admin status: ${isAdmin}`);
       return { user, isAdmin };
+    },
+    
+    /**
+     * Prevent logout by setting up a token monitor and auto-restore mechanism
+     */
+    preventLogout: () => {
+      console.log('🛡️ Setting up logout prevention...');
+      
+      // Immediately restore token if missing
+      if (!localStorage.getItem('token')) {
+        console.log('🔄 Restoring missing dev token');
+        localStorage.setItem('token', DEV_TOKEN);
+      }
+      
+      // Set up a monitoring interval
+      const intervalId = setInterval(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.log('⚠️ Token was removed - auto-restoring');
+          localStorage.setItem('token', DEV_TOKEN);
+          forceAdminStatusForDevMode();
+        }
+      }, 1000); // Check every second
+      
+      console.log('✅ Logout prevention active - token will be auto-restored if removed');
+      console.log('ℹ️ This will run until page reload or you call stopPreventLogout()');
+      
+      // Return a function to clear the interval
+      (window as any).devTools.stopPreventLogout = () => {
+        clearInterval(intervalId);
+        console.log('⛔ Logout prevention disabled');
+      };
+      
+      return true;
     },
     
     /**
@@ -86,6 +119,7 @@ if (process.env.NODE_ENV === 'development') {  // Add global utilities
       sessionStorage.removeItem('devAuthInitialized');
       sessionStorage.removeItem('redirectAfterLogin');
       console.log('✅ Authentication reset complete. Refreshing page...');
+      console.log('[DEBUG][HardRedirect][devTools] Redirecting to /login');
       setTimeout(() => window.location.href = '/login', 500);
     }
   };

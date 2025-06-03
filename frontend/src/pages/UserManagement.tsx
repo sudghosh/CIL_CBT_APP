@@ -79,6 +79,7 @@ export const UserManagement: React.FC = () => {
         
         // Redirect to login page after a short delay to allow error message to be seen
         setTimeout(() => {
+          console.log('[DEBUG][HardRedirect][UserManagement] Redirecting to /login?session_expired=true');
           localStorage.removeItem('token');
           window.location.href = '/login?session_expired=true';
         }, 1500);

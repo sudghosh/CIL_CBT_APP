@@ -1,0 +1,76 @@
+import React, { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { forceAdminStatusForDevMode } from '../utils/syncAuthState';
+import { isDevMode, isDevToken } from '../utils/devMode';
+import { useAuth } from '../contexts/AuthContext';
+
+/**
+ * Component that maintains auth state consistency during navigation
+ * This component doesn't render anything visible but works in the background
+ * to ensure auth state is preserved correctly, especially for admin routes
+ */
+export const NavigationAuthGuard: React.FC = () => {
+  const location = useLocation();
+  // Get auth context including authChecked flag to prevent race conditions
+  const { authChecked } = useAuth();
+  
+  useEffect(() => {
+    // Function to check and fix auth state on navigation
+    const syncAuthOnNavigation = () => {
+      console.log('[DEBUG] Navigation detected to:', location.pathname);
+      
+      // Skip synchronization if authentication hasn't been checked yet
+      if (!authChecked) {
+        console.log('[DEBUG][NavGuard] Skipping auth sync - auth not yet checked');
+        return;
+      }
+      
+    // Enhanced logging for navigation events
+      if (location.pathname === '/login') {
+        // Log the call stack to help trace the source of navigation
+        console.log('[DEBUG][NavGuard] Navigation to /login call stack:', new Error().stack);
+        
+        // Log auth state
+        const currentToken = localStorage.getItem('token');
+        const adminCacheRaw = sessionStorage.getItem('admin_check');
+        console.log('[DEBUG][NavGuard] Auth state on /login navigation:', {
+          token: currentToken ? 'exists' : 'null',
+          isDev: isDevMode(),
+          isDevToken: currentToken && isDevToken(currentToken),
+          adminCache: adminCacheRaw ? JSON.parse(adminCacheRaw) : null
+        });
+      }
+      
+      // Check if this is an admin route
+      const isAdminRoute = ['/users', '/questions'].some(
+        route => location.pathname.startsWith(route)
+      );
+      
+      if (isAdminRoute) {
+        console.log('[DEBUG] Navigating to admin route, ensuring admin status');
+        
+        // Enhanced logging for admin route navigation        const token = localStorage.getItem('token');
+        const adminCacheRaw = sessionStorage.getItem('admin_check');
+        const authCacheRaw = sessionStorage.getItem('auth_cache');
+        
+        console.log('[DEBUG][NavGuard] Auth state on admin navigation:', {
+          token: token ? 'exists' : 'null',
+          isDev: isDevMode(),
+          isDevToken: token && isDevToken && isDevToken(token),
+          adminCache: adminCacheRaw ? JSON.parse(adminCacheRaw) : null,
+          authCache: authCacheRaw ? JSON.parse(authCacheRaw) : null
+        });
+        
+        // Force proper admin status in dev mode
+        if (isDevMode()) {
+          forceAdminStatusForDevMode();
+        }
+      }
+    };    // Run the sync on every navigation
+    syncAuthOnNavigation();
+    
+  }, [location.pathname, authChecked]);
+
+  // This component doesn't render anything visible
+  return null;
+};
