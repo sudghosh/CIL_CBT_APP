@@ -31,28 +31,82 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Verify and validate a JWT token for authentication.
+    
+    This function:
+    1. Decodes and validates the JWT token
+    2. Extracts claims (email, role, user_id)
+    3. Verifies the user exists in the database
+    4. Ensures the user account is active
+    5. Verifies role consistency between token and database
+    
+    Returns the authenticated User object if successful.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Log the token validation attempt (just the fact, not the token itself)
+    print(f"Token verification started at {datetime.utcnow()}")
+    
     try:
+        # Decode and validate the token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
         
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
+        # Extract claims from payload
+        email: str = payload.get("sub")
+        user_role: str = payload.get("role")
+        user_id: int = payload.get("user_id")
+        
+        # Basic validation of required claims
+        if email is None:
+            print("Token missing 'sub' claim (email)")
+            raise credentials_exception
+            
+        print(f"Token verification successful for email: {email}")
+        
+    except JWTError as e:
+        print(f"JWT error during token verification: {str(e)}")
         raise credentials_exception
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is inactive"
-        )
-    return user
+    except Exception as e:
+        print(f"Unexpected error during token verification: {str(e)}")
+        raise credentials_exception
+    
+    try:
+        # Verify user exists in database
+        user = db.query(User).filter(User.email == email).first()
+        
+        # Handle invalid user
+        if user is None:
+            print(f"User not found in database: {email}")
+            raise credentials_exception
+            
+        # Check if user account is active
+        if not user.is_active:
+            print(f"Inactive user attempted access: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is inactive"
+            )
+            
+        # Ensure token role matches database role if role changed since token was issued
+        if user_role != user.role:
+            # The role in the database is the source of truth
+            print(f"Warning: Token role ({user_role}) doesn't match database role ({user.role}) for user {email}")
+            # We could either reject the token or update the user's role in memory
+            # For now, we accept the token but use the database role
+        
+        print(f"User authenticated successfully: {email}, role: {user.role}")
+        return user
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        print(f"Database error during user verification: {str(e)}")
+        raise credentials_exception
 
 def verify_admin(current_user: User = Depends(verify_token)):
     if current_user.role != "Admin":

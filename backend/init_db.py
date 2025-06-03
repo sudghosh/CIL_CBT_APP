@@ -1,15 +1,25 @@
 import os
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+import logging
+from sqlalchemy import text
 
-# Define your SQLAlchemy Base for declarative models
-Base = declarative_base()
+# Import Base, engine, and SessionLocal from the project's database module
+from src.database.database import Base, engine, SessionLocal, create_db_and_tables
 
-# --- Import your SQLAlchemy models here ---
-# Uncomment and adjust these imports as you define your SQLAlchemy models.
-# For example:
-# from src.models import User, Question, Option, Answer, Exam, UserExam, Score
-# Make sure your models inherit from 'Base' (e.g., class User(Base): ...).
+# Import all SQLAlchemy models to ensure they're discovered by Base.metadata.create_all()
+from src.database.models import (
+    User, AllowedEmail, Paper, Section, Subsection, Question, 
+    QuestionOption, TestTemplate, TestTemplateSection, TestAttempt, TestAnswer
+)
+
+# Import the seed function for sample application data
+from src.database.seed_data import seed_database as seed_sample_application_data
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Database connection URL from environment variables
 # This should match the DATABASE_URL set in your .env.dev file
@@ -22,57 +32,99 @@ DEBUG_POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DEBUG_POSTGRES_DB = os.getenv("POSTGRES_DB")
 
 # --- Debugging Output (TEMPORARY - Remove in Production) ---
-print("\n--- DEBUG: Environment Variables as seen by init_db.py ---")
-print(f"DATABASE_URL: {DATABASE_URL}")
-print(f"POSTGRES_USER: {DEBUG_POSTGRES_USER}")
-# Be cautious when printing passwords, especially in production logs.
-# For development, printing the full password is fine for verification.
-print(f"POSTGRES_PASSWORD: {DEBUG_POSTGRES_PASSWORD}")
-print(f"POSTGRES_DB: {DEBUG_POSTGRES_DB}")
-print("-----------------------------------------------------------\n")
+logger.info("\n--- Environment Variables as seen by init_db.py ---")
+logger.info(f"DATABASE_URL: {DATABASE_URL}")
+logger.info(f"POSTGRES_USER: {DEBUG_POSTGRES_USER}")
+# Be cautious when printing passwords, especially in production logs
+if DEBUG_POSTGRES_PASSWORD:
+    masked_password = DEBUG_POSTGRES_PASSWORD[:2] + "*" * (len(DEBUG_POSTGRES_PASSWORD) - 4) + DEBUG_POSTGRES_PASSWORD[-2:]
+    logger.info(f"POSTGRES_PASSWORD: {masked_password}")
+logger.info(f"POSTGRES_DB: {DEBUG_POSTGRES_DB}")
+logger.info("-----------------------------------------------------------\n")
 # --- End Debugging Output ---
 
 
 if not DATABASE_URL:
-    print("Error: DATABASE_URL environment variable is not set. Exiting.")
+    logger.error("Error: DATABASE_URL environment variable is not set. Exiting.")
     exit(1)
 
-try:
-    # Create a SQLAlchemy engine
-    engine = create_engine(DATABASE_URL)
+def seed_initial_user_data():
+    """
+    Seeds the initial admin user and allowed email.
+    This function is idempotent - it won't create duplicates if run multiple times.
+    """
+    try:
+        db = SessionLocal()
+        
+        # Define the admin user's email - IMPORTANT: The user should replace this with their actual email
+        admin_email = "binty.ghosh@gmail.com"  # <--- REPLACE WITH YOUR ACTUAL EMAIL
+        admin_google_id = "admin-dev-google-id-123456"
+        
+        logger.info(f"Checking if admin user already exists: {admin_email}")
+        
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.email == admin_email).first()
+        
+        if existing_user:
+            logger.info(f"Admin user already exists with ID: {existing_user.user_id}")
+            user_id = existing_user.user_id
+        else:
+            # Create new admin user
+            new_user = User(
+                google_id=admin_google_id,
+                email=admin_email,
+                first_name="Admin",
+                last_name="User",
+                role="Admin",  # Using capitalized "Admin" to match role checks elsewhere
+                is_active=True
+            )
+            db.add(new_user)
+            db.flush()  # Flush to get the user_id
+            user_id = new_user.user_id
+            logger.info(f"Created new admin user with ID: {user_id}")
+        
+        # Check if allowed email already exists
+        existing_email = db.query(AllowedEmail).filter(AllowedEmail.email == admin_email).first()
+        
+        if existing_email:
+            logger.info(f"Admin email already whitelisted: {admin_email}")
+        else:
+            # Add admin email to allowed emails
+            allowed_email = AllowedEmail(
+                email=admin_email,
+                added_by_admin_id=user_id
+            )
+            db.add(allowed_email)
+            logger.info(f"Whitelisted admin email: {admin_email}")
+        
+        # Commit all changes
+        db.commit()
+        logger.info("Successfully seeded initial user data")
+        
+    except Exception as e:
+        logger.error(f"Error seeding initial user data: {e}")
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
-    # Create a session local class
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def create_db_and_tables():
-        """
-        Connects to the database and creates all tables defined in SQLAlchemy models.
-        This method is idempotent; it won't recreate tables if they already exist.
-        """
-        try:
-            # Check if the database is reachable by executing a simple query
-            with SessionLocal() as session:
-                session.execute(text("SELECT 1"))
-            print("Database connection successful.")
-
-            # Create all tables defined in Base.metadata.
-            # This will create tables if they don't exist based on your imported models.
-            Base.metadata.create_all(engine)
-            print("Database tables created or already exist (via SQLAlchemy).")
-
-        except Exception as e:
-            print(f"Error creating database tables: {e}")
-            # Consider more advanced error handling or retries in a production setup.
-            raise # Re-raise the exception to indicate failure to Docker Compose
-
-    if __name__ == "__main__":
-        print("Running init_db.py...")
-        # When run via Docker Compose, env_file handles loading;
-        # no need for dotenv.load_dotenv() here.
+if __name__ == "__main__":
+    logger.info("Running init_db.py...")
+    
+    try:
+        # Step 1: Create database tables
         create_db_and_tables()
-        print("init_db.py execution complete.")
-
-except Exception as e:
-    # Catch errors during engine creation (e.g., malformed DATABASE_URL)
-    print(f"Failed to initialize database connection: {e}")
-    exit(1)
+        logger.info("Database tables created successfully")
+        
+        # Step 2: Seed initial user data (admin user and whitelist)
+        seed_initial_user_data()
+        logger.info("Initial user data seeded successfully")
+        
+        # Step 3: Seed sample application data (papers, questions, etc.)
+        seed_sample_application_data()
+        logger.info("Sample application data seeded successfully")
+        
+        logger.info("Database initialization completed successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        exit(1)

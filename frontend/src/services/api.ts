@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { handleAPIError, APIError, logError } from '../utils/errorHandler';
 import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
+import { axiosWithRetry } from '../utils/apiRetry';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -94,6 +95,26 @@ api.interceptors.response.use(
     }
     return response;
   },  (error) => {
+    // Log detailed error information in development mode
+    if (isDevMode()) {
+      console.error('API Error Details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          timeout: error.config?.timeout,
+          headers: error.config?.headers ? { ...error.config.headers, Authorization: '[REDACTED]' } : undefined
+        }
+      });
+      
+      // Special handling for timeout errors
+      if (error.message && error.message.includes('timeout')) {
+        console.error('API TIMEOUT ERROR: Request timed out', error.config?.url);
+      }
+    }
+    
     // Check if this is a development environment with a dev token
     const token = localStorage.getItem('token');
     const isDevTokenRequest = token && isDevToken(token) && isDevMode();
@@ -169,14 +190,38 @@ api.interceptors.response.use(
     if (error.response?.status === 422) {
       throw new APIError('Invalid input data. Please check your submission.', 422);
     }
-    throw handleAPIError(error);
-  }
+    throw handleAPIError(error);  }
 );
 
-// Auth API
+// Auth API with retry capabilities for critical endpoints
 export const authAPI = {
-  googleLogin: (tokenInfo: GoogleLoginRequest) => api.post('/auth/google-callback', tokenInfo),
-  getCurrentUser: () => api.get('/auth/me'),
+  googleLogin: (tokenInfo: GoogleLoginRequest) => 
+    // Use retry for Google login which is critical to the authentication flow
+    axiosWithRetry.post('/auth/google-callback', tokenInfo, {
+      baseURL: API_URL,
+      timeout: 12000, // 12 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
+      }
+    }, {
+      retries: 2, // Retry twice
+      retryDelay: 800 // Start with 800ms delay
+    }),
+    
+  getCurrentUser: () => 
+    // Use retry for current user which is critical to maintaining authentication
+    axiosWithRetry.get('/auth/me', {
+      baseURL: API_URL,
+      timeout: 8000, // 8 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : ''
+      }
+    }, {
+      retries: 1, // Retry once
+      retryDelay: 500 // Start with 500ms delay
+    }),
   getUsers: () => api.get('/auth/users'),
   whitelistEmail: (email: string) => api.post('/auth/whitelist-email', { email }),
   updateUserStatus: (userId: number, isActive: boolean) => 
