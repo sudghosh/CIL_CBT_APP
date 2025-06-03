@@ -3,6 +3,7 @@
  * This utility helps reduce API calls during authentication checks
  * by caching authentication state in session storage.
  */
+import { isDevMode, isDevToken } from './devMode';
 
 // Cache keys
 const AUTH_CACHE_KEY = 'auth_cache';
@@ -52,12 +53,19 @@ const getCachedItem = <T>(key: string): T | null => {
  * Cache current user authentication state
  */
 export const cacheAuthState = (user: any) => {
-  setCachedItem(AUTH_CACHE_KEY, true, MEDIUM_CACHE);
-  setCachedItem(USER_CACHE_KEY, user, MEDIUM_CACHE);
+  // Determine appropriate cache duration
+  const cacheDuration = isDevMode() ? LONG_CACHE * 2 : MEDIUM_CACHE;
+  
+  setCachedItem(AUTH_CACHE_KEY, true, cacheDuration);
+  setCachedItem(USER_CACHE_KEY, user, cacheDuration);
   
   // Cache admin status separately for quicker admin route checks
-  if (user?.role === 'Admin') {
-    setCachedItem(ADMIN_CHECK_KEY, true, MEDIUM_CACHE);
+  if (user?.role === 'Admin' || user?.isVerifiedAdmin) {
+    console.log('[DEBUG] Caching admin status: true');
+    setCachedItem(ADMIN_CHECK_KEY, true, cacheDuration);
+  } else {
+    console.log('[DEBUG] User is not admin, removing admin cache');
+    sessionStorage.removeItem(ADMIN_CHECK_KEY);
   }
 };
 
@@ -79,7 +87,15 @@ export const getCachedUser = <T>(): T | null => {
  * Check if user is admin from cache
  */
 export const isAdminFromCache = (): boolean => {
-  return getCachedItem<boolean>(ADMIN_CHECK_KEY) === true;
+  // For dev mode with dev token, always return true for admin check
+  if (isDevMode() && isDevToken(localStorage.getItem('token') || '')) {
+    console.log('[DEBUG] Dev mode detected in isAdminFromCache, returning true');
+    return true;
+  }
+  
+  const isAdmin = getCachedItem<boolean>(ADMIN_CHECK_KEY) === true;
+  console.log('[DEBUG] isAdminFromCache returning:', isAdmin);
+  return isAdmin;
 };
 
 /**

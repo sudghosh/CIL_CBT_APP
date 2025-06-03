@@ -62,10 +62,11 @@ export const isTokenExpired = (token: string): boolean => {
       console.warn('No token provided to isTokenExpired');
       return true;
     }
-    
-    // Check if it's the development token
+      // Check if it's the development token
     if (isDevToken(token)) {
       console.log('Development token never expires');
+      // Mark this token as validated in session storage for better persistence
+      sessionStorage.setItem('tokenValidated_' + token.substring(0, 10), 'true');
       return false; // Dev token never expires
     }
     

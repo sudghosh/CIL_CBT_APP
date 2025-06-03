@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logError } from '../utils/errorHandler';
 import { DEV_TOKEN, isDevMode } from '../utils/devMode';
+import { cacheAuthState } from '../utils/authCache';
 
 export const LoginPage: React.FC = (): JSX.Element => {
   const { login, error: authError, clearError } = useAuth();
@@ -75,6 +76,7 @@ export const LoginPage: React.FC = (): JSX.Element => {
           const data = await response.json();
           console.log('Development login succeeded via backend endpoint');
           localStorage.setItem('token', data.access_token);
+          console.log('[DEBUG] Dev token set in localStorage (backend):', localStorage.getItem('token'));
           await login({ token: data.access_token });
           
           // Redirect after successful login
@@ -90,13 +92,46 @@ export const LoginPage: React.FC = (): JSX.Element => {
         }
       } catch (err) {
         console.warn('Backend dev login failed, using client-side dev token');
-        
         try {
-          // Store the dev token in localStorage
           localStorage.setItem('token', DEV_TOKEN);
+          console.log('[DEBUG] Dev token set in localStorage (client):', localStorage.getItem('token'));
+          
+          // Cache auth state before login to prevent immediate re-verification
+          sessionStorage.setItem('lastAuthCheck', Date.now().toString());
+          sessionStorage.setItem('lastAdminCheck', Date.now().toString());
+          
+          // Import cacheAuthState and mark the user as an admin in the cache
+          const mockUser = {
+            user_id: 1,
+            email: 'dev@example.com',
+            first_name: 'Development',
+            last_name: 'User',
+            role: 'Admin',
+            is_active: true,
+            isVerifiedAdmin: true
+          };
+          
+          // Cache auth state explicitly for development mode
+          if (typeof window !== 'undefined') {
+            // Store in session storage with long expiry
+            const item = {
+              value: true,
+              expires: Date.now() + (30 * 60 * 1000) // 30 minutes
+            };
+            sessionStorage.setItem('auth_cache', JSON.stringify(item));
+            sessionStorage.setItem('admin_check', JSON.stringify(item));
+            sessionStorage.setItem('user_cache', JSON.stringify({
+              value: mockUser,
+              expires: Date.now() + (30 * 60 * 1000)
+            }));
+          }
           
           // Use the login function to set up auth context properly
           await login({ token: DEV_TOKEN });
+          // After login, check if token is still present
+          if (localStorage.getItem('token') !== DEV_TOKEN) {
+            console.warn('[DEBUG] Dev token missing from localStorage after login!');
+          }
           console.log('Development login completed with client-side token');
           
           // Redirect appropriately
@@ -128,16 +163,21 @@ export const LoginPage: React.FC = (): JSX.Element => {
     
     if (isDevMode() && !hasLoggedIn && !hasAttemptedAutoLogin && !loading) {
       // Skip auto-login if query param is set
-      const params = new URLSearchParams(window.location.search);      const skipAutoLogin = params.get('noautologin') === 'true';
-      if (!skipAutoLogin) {
+      const params = new URLSearchParams(window.location.search);      const skipAutoLogin = params.get('noautologin') === 'true';      if (!skipAutoLogin) {
         console.log('Auto-logging in with development account...');
+        // Clear any previous auth-related session storage to avoid conflicts
+        sessionStorage.removeItem('authError');
+        sessionStorage.removeItem('redirectAfterLogin');
+        
+        // Reset any stored auth check timestamps to force fresh checks
+        sessionStorage.removeItem('lastAuthCheck');
+        sessionStorage.removeItem('lastAdminCheck');
+        sessionStorage.removeItem('auth_cache');
+        sessionStorage.removeItem('user_cache');
+        sessionStorage.removeItem('admin_check');
+        
         // Mark that we've attempted auto-login to prevent duplicate attempts
         sessionStorage.setItem('devLoginAttempted', 'true');
-        
-        // Clear any previous session data to avoid conflicts
-        if (sessionStorage.getItem('authError')) {
-          sessionStorage.removeItem('authError');
-        }
         
         // Add a small delay to ensure all components are mounted
         const timer = setTimeout(() => {
