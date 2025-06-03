@@ -46,13 +46,11 @@ class TestUserManagement:
         response = admin_client.get("/auth/users")
         assert response.status_code == status.HTTP_200_OK
         assert isinstance(response.json(), list)
-        assert len(response.json()) > 0
-
-    @pytest.mark.parametrize(
+        assert len(response.json()) > 0    @pytest.mark.parametrize(
         "role,expected_status",
         [
             ("Admin", status.HTTP_200_OK),
-            ("RegularUser", status.HTTP_200_OK),
+            ("User", status.HTTP_200_OK),
             ("InvalidRole", status.HTTP_400_BAD_REQUEST)
         ]
     )
@@ -121,7 +119,7 @@ class TestUserIdentity:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["email"] == "user@example.com"
-        assert data["role"] == "RegularUser"
+        assert data["role"] == "User"
 
 @pytest.mark.auth
 @pytest.mark.admin

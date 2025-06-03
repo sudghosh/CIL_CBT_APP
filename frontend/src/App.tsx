@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline, Box, LinearProgress, Typography } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, Box, LinearProgress, Typography, Button } from '@mui/material';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
@@ -205,6 +205,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
       // Skip check if we have a cached admin status that's still valid
       if (hasAdminCache && timeSinceLastCheck < adminCheckInterval) {
         console.log('[DEBUG] AdminRoute: Using cached admin status');
+        if (isMounted) setIsVerifying(false); // Ensure we're not stuck in verification state
         return;
       }
       
@@ -224,6 +225,9 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
         }
         // Record that we checked
         recordAdminCheck();
+      } catch (error) {
+        console.error('[DEBUG] AdminRoute: Error verifying admin status', error);
+        // Prevent getting stuck due to errors
       } finally {
         if (isMounted) setIsVerifying(false);
       }
@@ -231,17 +235,68 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
     
     verifyAuth();
     
+    // Add a safety timeout to prevent eternal verification state
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted && isVerifying) {
+        console.log('[DEBUG] AdminRoute: Safety timeout triggered to prevent eternal verification');
+        setIsVerifying(false);
+      }
+    }, 5000); // 5 seconds max wait time
+    
     // Cleanup function
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimeout);
     };
   }, [user, refreshAuthStatus, isAdmin]);
+
+  // Add state for tracking verification timeout
+  const [verificationTimeout, setVerificationTimeout] = useState(false);
+
+  // Set a timeout to detect when verification is taking too long
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    
+    if (isVerifying) {
+      // After 8 seconds, show a timeout message
+      timeoutId = window.setTimeout(() => {
+        setVerificationTimeout(true);
+      }, 8000);
+    } else {
+      setVerificationTimeout(false);
+    }
+    
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [isVerifying]);
 
   if (loading || isVerifying) {
     return (
       <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LinearProgress sx={{ width: '50%', mb: 2 }} />
         <Typography variant="body1">Verifying administrator access...</Typography>
+        
+        {/* Show retry option if verification is taking too long */}
+        {verificationTimeout && (
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              Verification is taking longer than expected.
+            </Typography>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={() => {
+                setVerificationTimeout(false);
+                setIsVerifying(false);
+                // Force a refresh by updating URL parameters
+                window.location.search = `?refresh=${Date.now()}`;
+              }}
+            >
+              Retry Now
+            </Button>
+          </Box>
+        )}
       </Box>
     );
   }  // Wait for authChecked to be true before proceeding (prevents race condition)

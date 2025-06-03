@@ -197,8 +197,7 @@ export const LoginPage: React.FC = (): JSX.Element => {
     
     // Return empty cleanup function for cases where no timer was set
     return () => {};
-  }, []);
-  const handleSuccess = async (credentialResponse: CredentialResponse) => {
+  }, []);  const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
       setLoading(true);
       setError(null);
@@ -208,7 +207,40 @@ export const LoginPage: React.FC = (): JSX.Element => {
         throw new Error('No credential received from Google');
       }
 
-      await login({ token: credentialResponse.credential });
+      // Add retry logic for login
+      let loginSuccess = false;
+      let loginAttempts = 0;
+      const maxAttempts = 2;
+      let lastError: any = null;
+      
+      while (!loginSuccess && loginAttempts < maxAttempts) {
+        try {
+          loginAttempts++;
+          console.log(`Google login attempt ${loginAttempts} of ${maxAttempts}`);
+          
+          // Time the login process for debugging
+          const startTime = performance.now();
+          await login({ token: credentialResponse.credential });
+          const endTime = performance.now();
+          console.log(`Login completed in ${(endTime - startTime).toFixed(0)}ms`);
+          
+          loginSuccess = true;
+        } catch (err: any) {
+          lastError = err;
+          console.error(`Login attempt ${loginAttempts} failed:`, err);
+          
+          // Check if we should retry
+          if (loginAttempts < maxAttempts) {
+            console.log(`Retrying login in 1 second...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      // If all attempts failed, throw the last error
+      if (!loginSuccess) {
+        throw lastError || new Error('All login attempts failed');
+      }
       
       // Check if we need to redirect to a specific page after login
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
@@ -231,7 +263,19 @@ export const LoginPage: React.FC = (): JSX.Element => {
       }
     } catch (err: any) {
       logError(err, { context: 'Google login success handler' });
-      setError(err.response?.data?.detail || err.message || 'Failed to login');
+      
+      // Provide more helpful error messages based on error type
+      let errorMessage = err.response?.data?.detail || err.message || 'Failed to login';
+      
+      if (err.message && err.message.includes('timeout')) {
+        errorMessage = 'Login request timed out. Please check your connection and try again.';
+      }
+      
+      if (err.response?.status === 401) {
+        errorMessage = 'Your email is not authorized for this application. Please contact an administrator.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -59,13 +59,19 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Add CORS middleware with more secure configuration
+# Add CORS middleware with development-friendly configuration
+origins = ["http://localhost:3000"]
+# In development mode, allow all origins for easier debugging
+if os.environ.get("ENV") == "development":
+    origins = ["*"]
+    logger.info("Development mode: CORS configured to accept all origins")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Replace with your frontend URL in production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Dev-Mode", "Access-Control-Allow-Headers", "Origin", "Accept"],
+    allow_headers=["*"],  # More permissive in development
     expose_headers=["Content-Type", "Authorization"],
     max_age=600  # Cache preflight requests for 10 minutes
 )

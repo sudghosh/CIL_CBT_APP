@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const response = await authAPI.getCurrentUser();
           if (isMounted) {
-            setUser(response.data);
+            setUser(response.data as User);
             setError(null);
           }
         } catch (err: any) {
@@ -150,19 +150,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await authAPI.googleLogin(tokenInfo);
       console.log('Login response:', response.data);
       
-      if (!response.data.access_token) {
+      if (!response.data || !(response.data as any).access_token) {
         throw new Error("No access token received from server");
       }
       
       // Store the token securely
-      localStorage.setItem('token', response.data.access_token);
+      localStorage.setItem('token', (response.data as any).access_token);
       console.log('[DEBUG] Token set in localStorage:', localStorage.getItem('token'));
       
       try {
         // Get user profile with the new token
         const userResponse = await authAPI.getCurrentUser();
         console.log('User data:', userResponse.data);
-                setUser(userResponse.data);
+                setUser(userResponse.data as User);
         setError(null);
       } catch (userErr) {
         logError(userErr, { context: 'Fetching user data after login' });
@@ -261,8 +261,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       setLoading(true);
-      const response = await authAPI.getCurrentUser();
-      setUser(response.data);
+      
+      // Add a timeout to the API call to prevent hanging indefinitely
+      const timeoutPromise = new Promise<any>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Authentication request timed out after 10 seconds'));
+        }, 10000); // 10 second timeout
+      });
+      
+      // Race between the API call and the timeout
+      const response = await Promise.race([
+        authAPI.getCurrentUser(),
+        timeoutPromise
+      ]);
+      
+      setUser(response.data as User);
       setError(null);
       console.log('Auth status refreshed successfully');
       return true;
@@ -271,6 +284,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err.status === 401 || err.response?.status === 401) {
         localStorage.removeItem('token');
         setUser(null);
+      } else if (err.message && err.message.includes('timed out')) {
+        // If timed out, try to reuse cached user data if available
+        const cachedUserData = sessionStorage.getItem('user_cache');
+        if (cachedUserData) {
+          try {
+            const cachedUser = JSON.parse(cachedUserData);
+            setUser(cachedUser);
+            console.log('Using cached user data after timeout');
+            return true;
+          } catch (cacheErr) {
+            console.error('Error parsing cached user data:', cacheErr);
+          }
+        }
       }
       return false;
     } finally {

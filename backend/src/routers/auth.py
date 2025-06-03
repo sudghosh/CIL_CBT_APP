@@ -74,108 +74,67 @@ async def google_auth_callback(token_info: GoogleTokenInfo, request: Request, db
                 detail="Email not found in token"
             )
         print(f"Email extracted from token: {email}")
+        google_id = idinfo.get('sub', '')
+        first_name = idinfo.get('given_name', '')
+        last_name = idinfo.get('family_name', '')
 
-
-        # Check if this is the first user (will become admin)
-        try:
-            is_first_user = db.query(User).count() == 0
-            print(f"Is first user: {is_first_user}")
-        except Exception as e:
-            print(f"Error checking for first user: {str(e)}")
+        # CRITICAL STEP 1: Check if email is whitelisted
+        allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
+        if not allowed_email:
+            print(f"Email {email} not in whitelist")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error checking user count in database"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your email is not authorized for this application. Please contact an administrator."
             )
 
-        # If not first user, check whitelist
-        if not is_first_user:
-            try:
-                allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
-                if not allowed_email:
-                    print(f"Email {email} not in whitelist")
-                    # Special case: add binty.ghosh@gmail.com to whitelist if not exists
-                    if email == "binty.ghosh@gmail.com":
-                        # Add to whitelist
-                        admin_user = db.query(User).filter(User.role == "Admin").first()
-                        if admin_user:
-                            allowed_email = AllowedEmail(
-                                email=email,
-                                added_by_admin_id=admin_user.user_id
-                            )
-                            db.add(allowed_email)
-                            db.commit()
-                            print(f"Email {email} added to whitelist for admin {admin_user.user_id}")
-                        else:
-                             print(f"Could not find admin user to whitelist {email}")
-                             # Decide how to handle this case - maybe raise an error or log a warning
-                    else:
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Email not whitelisted"
-                        )
-                else:
-                    print(f"Email {email} found in whitelist.")
-            except HTTPException:
-                 raise # Re-raise the HTTPException
-            except Exception as e:
-                print(f"Error checking or adding email to whitelist: {str(e)}")
-                db.rollback() # Rollback the transaction in case of error
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error processing email whitelist"
-                )
+        print(f"Email {email} found in whitelist. Proceeding with authentication.")
 
-
-        # Get or create user
-        try:
-            user = db.query(User).filter(User.email == email).first()
-            if not user:
-                user = User(
-                    email=email,
-                    google_id=idinfo.get('sub', ''), # Use .get for safety
-                    first_name=idinfo.get('given_name', ''),
-                    last_name=idinfo.get('family_name', ''),
-                    role="Admin" if is_first_user else "RegularUser",
-                    is_active=True
-                )
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-                print(f"User created with email: {email}")
-
-                # If this is the first user, add their email to whitelist
-                if is_first_user:
-                    allowed_email = AllowedEmail(
-                        email=email,
-                        added_by_admin_id=user.user_id
-                    )
-                    db.add(allowed_email)
-                    db.commit()
-                    print(f"First user email {email} added to whitelist.")
-
-            else:
-                print(f"User found with email: {email}")
-
-        except Exception as e:
-            print(f"Error getting or creating user: {str(e)}")
-            db.rollback() # Rollback the transaction in case of error
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error processing user data"
+        # STEP 2: Check if user already exists in the database
+        user = db.query(User).filter(User.email == email).first()
+        
+        # Handle existing user
+        if user:
+            print(f"Existing user found: {user.email} with role: {user.role}")
+            # Update user details if needed but keep the existing role
+            user.google_id = google_id
+            user.first_name = first_name
+            user.last_name = last_name
+            # Important: do not change the role of existing users
+            db.commit()
+            db.refresh(user)
+            print(f"User details updated for {user.email}")
+        # Handle new user with whitelisted email
+        else:
+            print(f"Creating new user for whitelisted email: {email}")
+            user = User(
+                email=email,
+                google_id=google_id,
+                first_name=first_name,
+                last_name=last_name,
+                role="User",  # Default role is "User" for new users
+                is_active=True
             )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            print(f"New user created with email: {email} and role: {user.role}")
 
-
-        # Create access token
+        # STEP 3: Generate Authentication Token with user role included
         try:
             access_token_expires = timedelta(minutes=30)
+            # Include the user role in the token payload
             access_token = create_access_token(
-                data={"sub": email},
+                data={
+                    "sub": email,
+                    "role": user.role,  # Include role in token for authorization
+                    "user_id": user.user_id
+                },
                 expires_delta=access_token_expires
             )
-            print("Access token created successfully.")
+            print(f"Access token created successfully for {email} with role: {user.role}")
         except Exception as e:
-             print(f"Error creating access token: {str(e)}")
-             raise HTTPException(
+            print(f"Error creating access token: {str(e)}")
+            raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error creating access token"
             )
@@ -239,12 +198,14 @@ async def dev_login(db: Session = Depends(get_db)):
                 db.commit()
                 print(f"Development email {dev_email} added to whitelist.")
         else:
-            print(f"Using existing development user: {dev_email}")
-    
-        # Create a special development token with very long expiration
+            print(f"Using existing development user: {dev_email}")        # Create a special development token with very long expiration
         access_token_expires = timedelta(days=30)  # 30 days for dev
         access_token = create_access_token(
-            data={"sub": dev_email},
+            data={
+                "sub": dev_email,
+                "role": user.role,  # Include role in token for authorization
+                "user_id": user.user_id
+            },
             expires_delta=access_token_expires
         )
         
@@ -325,7 +286,7 @@ async def update_user_role(
     current_user: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
-    if data["role"] not in ["Admin", "RegularUser"]:
+    if data["role"] not in ["Admin", "User"]:
         raise HTTPException(status_code=400, detail="Invalid role")
 
     user = db.query(User).filter(User.user_id == user_id).first()

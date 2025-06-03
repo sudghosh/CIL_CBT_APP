@@ -110,10 +110,9 @@ export const UserManagement: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to update user status');
     }
   };
-
   const handleToggleUserRole = async (userId: number, currentRole: string) => {
     try {
-      const newRole = currentRole === 'Admin' ? 'RegularUser' : 'Admin';
+      const newRole = currentRole === 'Admin' ? 'User' : 'Admin';
       await authAPI.updateUserRole(userId, newRole);
       fetchUsers();
     } catch (err: any) {
