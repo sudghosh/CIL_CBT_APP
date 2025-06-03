@@ -18,6 +18,8 @@ import { authAPI } from './services/api';
 import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
 import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
 import { isDevToken, isDevMode } from './utils/devMode';
+import { forceAdminStatusForDevMode } from './utils/syncAuthState';
+import { setupTokenMonitor } from './utils/tokenMonitor';
 
 // Create theme with better accessibility and consistent styling
 const theme = createTheme({
@@ -57,11 +59,20 @@ const theme = createTheme({
 });
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, refreshAuthStatus } = useAuth();
+  const { user, loading, refreshAuthStatus, authChecked } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
+  // Track initial mount to prevent first-render redirects
+  const isInitialMount = React.useRef(true);
   
-  // Check token validity when accessing protected routes
+  // Debug log
+  console.log('[DEBUG][ProtectedRoute] user:', user, 'loading:', loading, 'authChecked:', authChecked, 'isInitialMount:', isInitialMount.current);
+    // Check token validity when accessing protected routes
   useEffect(() => {
+    // On first render, mark as no longer initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+    }
+    
     // Prevent refreshing auth status on every re-render
     // Only do it when necessary (no user or first time accessing a protected route)
     const token = localStorage.getItem('token');
@@ -99,27 +110,60 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
         <Typography variant="body1">Loading your profile...</Typography>
       </Box>
     );
-  }
-
-  if (!user) {
-    // Save the current URL for redirecting back after login
-    sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-    return <Navigate to="/login" replace />;
+  }  if (!user) {
+    // Check for development mode token before redirecting
+    const token = localStorage.getItem('token');
+    const isDevUser = isDevMode() && token && isDevToken(token);
+    
+    // If we're in dev mode with a dev token but no user, wait for auth context to update
+    if (isDevUser && !user && !isInitialMount.current) {
+      console.log('[DEBUG][ProtectedRoute] Dev token detected but no user - waiting for auth check');
+      return (
+        <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <LinearProgress sx={{ width: '50%', mb: 2 }} />
+          <Typography variant="body1">Restoring development authentication...</Typography>
+        </Box>
+      );
+    }
+    
+    // Only redirect after the initial mount is complete and authentication is checked
+    if (!isInitialMount.current && authChecked) {
+      // Save the current URL for redirecting back after login
+      sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+      console.log('[DEBUG][Redirect][AppRoute] Redirecting to /login because user is:', user, 'token:', token, 'loading:', loading);
+      return <Navigate to="/login" replace />;
+    }
+    // Show loading instead of redirecting during initial mount
+    return (
+      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <LinearProgress sx={{ width: '50%', mb: 2 }} />
+        <Typography variant="body1">Verifying authentication status...</Typography>
+      </Box>
+    );
   }
 
   return <Layout>{children}</Layout>;
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, isAdmin, refreshAuthStatus } = useAuth();
+  const { user, loading, isAdmin, refreshAuthStatus, authChecked } = useAuth();
   const [isVerifying, setIsVerifying] = useState(false);
+  // Track initial mount to prevent first-render redirects
+  const isInitialMount = React.useRef(true);
   
-  // Refresh auth status when accessing admin routes to ensure fresh token validation
+  // Debug log
+  console.log('[DEBUG][AdminRoute] user:', user, 'isAdmin:', isAdmin, 'loading:', loading, 'authChecked:', authChecked, 'isInitialMount:', isInitialMount.current);
+    // Refresh auth status when accessing admin routes to ensure fresh token validation
   useEffect(() => {
     // Track if component is mounted
     let isMounted = true;
     
     async function verifyAuth() {
+      // On first render, mark as no longer initial mount
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+      }
+      
       // Always do an initial admin check when the component mounts
       console.log('[DEBUG] AdminRoute checking authentication');
       
@@ -200,12 +244,64 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { chi
         <Typography variant="body1">Verifying administrator access...</Typography>
       </Box>
     );
-  }
-
-  if (!user) {
-    // Save the current URL for redirecting back after login
-    sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-    return <Navigate to="/login" replace />;
+  }  // Wait for authChecked to be true before proceeding (prevents race condition)
+  if (!authChecked) {
+    console.log('[DEBUG][AdminRoute] Waiting for authentication check to complete');
+      // In development mode, log detailed auth state for debugging
+    if (isDevMode()) {
+      console.log('[DEBUG][AdminRoute] Auth not checked yet, waiting for initialization');
+      // Log authentication state
+      const token = localStorage.getItem('token');
+      const adminCacheRaw = sessionStorage.getItem('admin_check');      console.log('[DEBUG][AdminRoute] Current auth state:', {
+        token: token ? 'exists' : 'null',
+        isDev: isDevMode(),
+        isDevToken: token && isDevToken(token),
+        adminCache: adminCacheRaw ? JSON.parse(adminCacheRaw) : null
+      });
+    }
+    
+    return (
+      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <LinearProgress sx={{ width: '50%', mb: 2 }} />
+        <Typography variant="body1">Waiting for authentication...</Typography>
+      </Box>
+    );
+  }  if (!user) {
+    // Check for development mode token before redirecting
+    const token = localStorage.getItem('token');
+    const isDevUser = isDevMode() && token && isDevToken(token);
+    
+    // If we're in dev mode with a dev token but no user, wait for auth context to update
+    if (isDevUser && !user && !isInitialMount.current) {
+      console.log('[DEBUG][AdminRoute] Dev token detected but no user - waiting for auth check');
+      
+      // Force admin status for dev mode
+      if (isDevMode()) {
+        forceAdminStatusForDevMode();
+      }
+      
+      return (
+        <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <LinearProgress sx={{ width: '50%', mb: 2 }} />
+          <Typography variant="body1">Restoring development authentication...</Typography>
+        </Box>
+      );
+    }
+    
+    // Only redirect after the initial mount is complete and authentication is checked
+    if (!isInitialMount.current && authChecked) {
+      // Save the current URL for redirecting back after login
+      sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+      console.log('[DEBUG][Redirect][AdminRoute] Redirecting to /login because user is:', user, 'token:', token, 'isAdmin:', isAdmin, 'loading:', loading);
+      return <Navigate to="/login" replace />;
+    }
+    // Show loading instead of redirecting during initial mount
+    return (
+      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <LinearProgress sx={{ width: '50%', mb: 2 }} />
+        <Typography variant="body1">Verifying authentication status...</Typography>
+      </Box>
+    );
   }
   
   if (!isAdmin) {

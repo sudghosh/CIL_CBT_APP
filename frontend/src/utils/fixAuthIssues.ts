@@ -49,6 +49,7 @@ export const resetDevAuth = (): void => {
   }
   
   // Force page reload to start fresh
+  console.log('[DEBUG][HardRedirect][fixAuthIssues] Redirecting to /login?noautologin=true');
   window.location.href = '/login?noautologin=true';
 };
 

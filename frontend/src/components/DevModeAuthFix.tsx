@@ -10,19 +10,19 @@ import { forceDevModeAdmin, fixSessionState } from '../utils/fixAuthIssues';
 import { isDevMode } from '../utils/devMode';
 
 export const DevModeAuthFix: React.FC = () => {
+  // Always call hooks first
+  useEffect(() => {
+    return () => {
+      // Nothing to clean up for now
+    };
+  }, []);
+
   // Only render in development mode
   if (!isDevMode()) {
     return null;
   }
   
-  // Clean up any event listeners when component unmounts
-  useEffect(() => {
-    return () => {
-      // Nothing to clean up for now, but this is a good practice
-      // to have in place if we need it in the future
-    };
-  }, []);
-    const handleFixAuth = () => {
+  const handleFixAuth = () => {
     // Clear any existing session data first
     fixSessionState();
     

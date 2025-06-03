@@ -34,26 +34,47 @@ const api = axios.create({
 // Add token to requests if it exists
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    let token = localStorage.getItem('token');
+    let tokenRestored = false;
+    
+    // Auto-restore dev token if missing in development mode
+    if (!token && isDevMode()) {
+      console.log(`[API] No token found for request: ${config.method?.toUpperCase()} ${config.url}, restoring dev token`);
+      token = DEV_TOKEN;
+      localStorage.setItem('token', DEV_TOKEN);
+      tokenRestored = true;
+      
+      // Dispatch event to notify about token restoration
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('dev-token-restored', { 
+          detail: { timestamp: Date.now() } 
+        });
+        window.dispatchEvent(event);
+      }
+    }
     
     // Handle development token specially
     if (token && isDevToken(token) && isDevMode()) {
-      console.log(`Using development token for request: ${config.method?.toUpperCase()} ${config.url}`);
+      if (tokenRestored) {
+        console.log(`[API] Using restored development token for request: ${config.method?.toUpperCase()} ${config.url}`);
+      } else {
+        console.log(`[API] Using development token for request: ${config.method?.toUpperCase()} ${config.url}`);
+      }
       config.headers.Authorization = `Bearer ${token}`;
       config.headers['X-Dev-Mode'] = 'true';
     } else if (token) {
       config.headers.Authorization = `Bearer ${token}`;
       // Log token being used (hide actual value in production)
       if (isDevMode()) {
-        console.log(`Using token for request: ${token.substring(0, 10)}...`);
+        console.log(`[API] Using token for request: ${token.substring(0, 10)}...`);
       }
     } else {
-      console.warn(`No token found for API request to ${config.url}`);
+      console.warn(`[API] No token found for API request to ${config.url}`);
     }
     
     // Log outgoing requests in development
     if (isDevMode()) {
-      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, config);
+      console.log(`[API] Request: ${config.method?.toUpperCase()} ${config.url}`, config);
     }
     
     return config;
@@ -133,6 +154,7 @@ api.interceptors.response.use(
       if (!currentPath.includes('/login')) {
         // Store the current path to redirect back after login
         sessionStorage.setItem('redirectAfterLogin', currentPath);
+        console.log('[DEBUG][HardRedirect][api.ts] Redirecting to /login?session_expired=true');
         window.location.href = '/login?session_expired=true';
       }
       
