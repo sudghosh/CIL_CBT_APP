@@ -142,8 +142,7 @@ export const QuestionManagement: React.FC = () => {
             >
               {uploading ? 'Uploading...' : 'Upload Questions'}
             </Button>
-          </label>
-          <Button
+          </label>          <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
@@ -167,6 +166,29 @@ export const QuestionManagement: React.FC = () => {
           >
             Add Question
           </Button>
+        </Box>
+        
+        <Box sx={{ mt: 2, mb: 3, border: '1px dashed #ccc', p: 2, borderRadius: 1, bgcolor: 'background.paper' }}>
+          <Typography variant="subtitle2" gutterBottom color="primary">
+            CSV/XLSX Upload Format Instructions:
+          </Typography>
+          <Typography variant="body2">
+            Upload a CSV/XLSX file with the following columns:
+          </Typography>
+          <Typography variant="body2" component="div" sx={{ mt: 1, pl: 2 }}>
+            <ul>
+              <li>question_text: The full text of the question</li>
+              <li>option_a, option_b, option_c, option_d: The text for each option</li>
+              <li>correct_answer_index: 0-indexed (e.g., 0 for option A, 1 for option B)</li>
+              <li>paper_id: ID of the associated paper</li>
+              <li>section_id: ID of the associated section</li>
+              <li>subsection_id: ID of the associated subsection</li>
+              <li>explanation (optional): Explanation for the correct answer</li>
+            </ul>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Note: paper_id, section_id, and subsection_id are required fields for properly associating questions.
+          </Typography>
         </Box>
       </Box>
 

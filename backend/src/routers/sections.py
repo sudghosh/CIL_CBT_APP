@@ -1,0 +1,260 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from sqlalchemy.orm import Session, joinedload
+from typing import List, Optional
+from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+import logging
+
+from ..database.database import get_db
+from ..database.models import Section, Subsection
+from ..auth.auth import verify_token, verify_admin, User
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+router = APIRouter(prefix="/sections", tags=["sections"])
+
+class SubsectionBase(BaseModel):
+    subsection_name: str
+    description: str = None
+
+    class Config:
+        from_attributes = True
+
+class SectionCreate(BaseModel):
+    paper_id: int
+    section_name: str
+    marks_allocated: int = None
+    description: str = None
+    subsections: List[SubsectionBase] = []
+
+    class Config:
+        from_attributes = True
+
+class SectionUpdate(BaseModel):
+    section_name: str
+    marks_allocated: int = None
+    description: str = None
+
+    class Config:
+        from_attributes = True
+
+class SectionResponse(BaseModel):
+    section_id: int
+    paper_id: int
+    section_name: str
+    marks_allocated: int = None
+    description: str = None
+    subsections: List[dict] = []
+
+    class Config:
+        from_attributes = True
+
+@router.get("/", response_model=List[SectionResponse])
+@limiter.limit("30/minute")
+async def get_sections(
+    request: Request,
+    paper_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Start with base query
+        query = db.query(Section)
+        
+        # Apply paper_id filter if provided
+        if paper_id:
+            query = query.filter(Section.paper_id == paper_id)
+        
+        # Use eager loading to avoid N+1 queries
+        sections = query.options(
+            joinedload(Section.subsections)
+        ).all()
+        
+        # Transform the data for response
+        response = []
+        for section in sections:
+            section_dict = {
+                "section_id": section.section_id,
+                "paper_id": section.paper_id,
+                "section_name": section.section_name,
+                "marks_allocated": section.marks_allocated,
+                "description": section.description,
+                "subsections": [
+                    {
+                        "subsection_id": sub.subsection_id,
+                        "subsection_name": sub.subsection_name,
+                        "description": sub.description
+                    }
+                    for sub in section.subsections
+                ]
+            }
+            response.append(section_dict)
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error retrieving sections: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving sections"
+        )
+
+@router.get("/{section_id}", response_model=SectionResponse)
+@limiter.limit("30/minute")
+async def get_section(
+    request: Request,
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        section = db.query(Section).filter(
+            Section.section_id == section_id
+        ).options(
+            joinedload(Section.subsections)
+        ).first()
+        
+        if not section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        
+        return section
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving section"
+        )
+
+@router.post("/", response_model=SectionResponse)
+@limiter.limit("10/minute")
+async def create_section(
+    request: Request,
+    section: SectionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Create section
+        db_section = Section(
+            paper_id=section.paper_id,
+            section_name=section.section_name,
+            marks_allocated=section.marks_allocated,
+            description=section.description
+        )
+        db.add(db_section)
+        db.flush()
+
+        # Create subsections if any
+        subsections_to_create = []
+        for subsection_data in section.subsections:
+            subsection = Subsection(
+                section_id=db_section.section_id,
+                subsection_name=subsection_data.subsection_name,
+                description=subsection_data.description
+            )
+            subsections_to_create.append(subsection)
+
+        # Bulk insert all subsections
+        if subsections_to_create:
+            db.bulk_save_objects(subsections_to_create)
+
+        # Commit all changes
+        db.commit()
+        db.refresh(db_section)
+        
+        # Reload section with eager loading for response
+        db_section = db.query(Section).options(
+            joinedload(Section.subsections)
+        ).filter(Section.section_id == db_section.section_id).first()
+        
+        return db_section
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating section: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error creating section"
+        )
+
+@router.put("/{section_id}", response_model=SectionResponse)
+@limiter.limit("10/minute")
+async def update_section(
+    request: Request,
+    section_id: int,
+    section_update: SectionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if section exists
+        db_section = db.query(Section).filter(Section.section_id == section_id).first()
+        if not db_section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        
+        # Update section fields
+        db_section.section_name = section_update.section_name
+        db_section.marks_allocated = section_update.marks_allocated
+        db_section.description = section_update.description
+        
+        db.commit()
+        db.refresh(db_section)
+        
+        # Get the updated section with eager loading
+        updated_section = db.query(Section).options(
+            joinedload(Section.subsections)
+        ).filter(Section.section_id == section_id).first()
+        
+        return updated_section
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error updating section"
+        )
+
+@router.delete("/{section_id}")
+@limiter.limit("10/minute")
+async def delete_section(
+    request: Request,
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if section exists
+        db_section = db.query(Section).filter(Section.section_id == section_id).first()
+        if not db_section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        
+        # Check if section has subsections
+        subsections = db.query(Subsection).filter(Subsection.section_id == section_id).all()
+        if subsections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete section with existing subsections. Delete subsections first."
+            )
+        
+        # Delete the section
+        db.delete(db_section)
+        db.commit()
+        
+        return {"status": "success", "message": f"Section with ID {section_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting section"
+        )

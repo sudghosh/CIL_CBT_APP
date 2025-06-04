@@ -19,10 +19,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
-  };
-  const menuItems = [
+  };  const menuItems = [
     { text: 'Home', icon: <Home />, path: '/' },
-    { text: 'Tests', icon: <Assignment />, path: '/tests' },
+    { text: 'Tests', icon: <Assignment />, path: '/practice-test' },
     { text: 'Results', icon: <Description />, path: '/results' },
     ...(isAdmin ? [
       { text: 'Question Bank', icon: <Description />, path: '/questions' },
@@ -32,10 +31,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   const drawer = (
-    <div>
-      <Toolbar>
+    <div>      <Toolbar>
         <Typography variant="h6" noWrap>
-          CIL CBT
+          CBT
         </Typography>
       </Toolbar>
       <List>

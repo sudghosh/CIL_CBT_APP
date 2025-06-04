@@ -209,3 +209,105 @@ async def deactivate_paper(
     paper.is_active = False
     db.commit()
     return {"status": "success"}
+
+@router.get("/{paper_id}", response_model=PaperResponse)
+@limiter.limit("30/minute")
+async def get_paper(
+    request: Request,
+    paper_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        paper = db.query(Paper).filter(
+            Paper.paper_id == paper_id
+        ).options(
+            joinedload(Paper.sections).joinedload(Section.subsections)
+        ).first()
+        
+        if not paper:
+            raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
+        
+        return paper
+    except Exception as e:
+        logger.error(f"Error retrieving paper {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving paper"
+        )
+
+@router.put("/{paper_id}", response_model=PaperResponse)
+@limiter.limit("10/minute")
+async def update_paper(
+    request: Request,
+    paper_id: int,
+    paper_update: PaperCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if paper exists
+        db_paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if not db_paper:
+            raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
+        
+        # Update paper fields
+        db_paper.paper_name = paper_update.paper_name
+        db_paper.total_marks = paper_update.total_marks
+        db_paper.description = paper_update.description
+        
+        db.commit()
+        db.refresh(db_paper)
+        
+        # Get the updated paper with eager loading
+        updated_paper = db.query(Paper).options(
+            joinedload(Paper.sections).joinedload(Section.subsections)
+        ).filter(Paper.paper_id == paper_id).first()
+        
+        return updated_paper
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating paper {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error updating paper"
+        )
+
+@router.delete("/{paper_id}")
+@limiter.limit("10/minute")
+async def delete_paper(
+    request: Request,
+    paper_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if paper exists
+        db_paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if not db_paper:
+            raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
+        
+        # Check if paper has sections
+        sections = db.query(Section).filter(Section.paper_id == paper_id).all()
+        if sections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete paper with existing sections. Delete sections first."
+            )
+        
+        # Delete the paper
+        db.delete(db_paper)
+        db.commit()
+        
+        return {"status": "success", "message": f"Paper with ID {paper_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting paper {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting paper"
+        )

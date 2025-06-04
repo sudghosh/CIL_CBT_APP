@@ -223,6 +223,8 @@ export const authAPI = {
       retryDelay: 500 // Start with 500ms delay
     }),  getUsers: () => api.get('/auth/users'),
   whitelistEmail: (email: string) => api.post('/admin/allowed-emails', { email: email }),
+  getAllowedEmails: () => api.get('/admin/allowed-emails'),
+  deleteAllowedEmail: (emailId: number) => api.delete(`/admin/allowed-emails/${emailId}`),
   updateUserStatus: (userId: number, isActive: boolean) => 
     api.put(`/auth/users/${userId}/status`, { is_active: isActive }),updateUserRole: (userId: number, role: string) =>
     api.put(`/auth/users/${userId}/role`, { role }),
@@ -285,7 +287,34 @@ export const testsAPI = {
 // Papers API
 export const papersAPI = {
   getPapers: () => api.get('/papers'),
+  getPaper: (paperId: number) => api.get(`/papers/${paperId}`),
   createPaper: (data: any) => api.post('/papers', data),
+  updatePaper: (paperId: number, data: any) => api.put(`/papers/${paperId}`, data),
+  deletePaper: (paperId: number) => api.delete(`/papers/${paperId}`),
   activatePaper: (paperId: number) => api.put(`/papers/${paperId}/activate`),
   deactivatePaper: (paperId: number) => api.put(`/papers/${paperId}/deactivate`),
+};
+
+// Sections API
+export const sectionsAPI = {
+  getSections: (paperId?: number) => {
+    const params = paperId ? { paper_id: paperId } : {};
+    return api.get('/sections', { params });
+  },
+  getSection: (sectionId: number) => api.get(`/sections/${sectionId}`),
+  createSection: (data: any) => api.post('/sections', data),
+  updateSection: (sectionId: number, data: any) => api.put(`/sections/${sectionId}`, data),
+  deleteSection: (sectionId: number) => api.delete(`/sections/${sectionId}`),
+};
+
+// Subsections API
+export const subsectionsAPI = {
+  getSubsections: (sectionId?: number) => {
+    const params = sectionId ? { section_id: sectionId } : {};
+    return api.get('/subsections', { params });
+  },
+  getSubsection: (subsectionId: number) => api.get(`/subsections/${subsectionId}`),
+  createSubsection: (data: any) => api.post('/subsections', data),
+  updateSubsection: (subsectionId: number, data: any) => api.put(`/subsections/${subsectionId}`, data),
+  deleteSubsection: (subsectionId: number) => api.delete(`/subsections/${subsectionId}`),
 };

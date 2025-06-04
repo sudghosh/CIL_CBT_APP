@@ -16,8 +16,13 @@ import {
   DialogActions,
   TextField,
   Switch,  Alert,
+  IconButton,
+  Tabs,
+  Tab,
+  Divider,
+  Tooltip,
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { authAPI } from '../services/api';
 import { Loading } from '../components/Loading';
 
@@ -30,14 +35,26 @@ interface User {
   is_active: boolean;
 }
 
+interface AllowedEmail {
+  allowed_email_id: number;
+  email: string;
+  added_by_admin_id: number;
+  added_at: string;
+}
+
 export const UserManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [emailToAdd, setEmailToAdd] = useState('');
-  useEffect(() => {
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(false);
+  const [emailToDelete, setEmailToDelete] = useState<AllowedEmail | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const [loadingEmails, setLoadingEmails] = useState(true);  useEffect(() => {
     fetchUsers();
+    fetchAllowedEmails();
     
     // Add event listener for auth status changes
     window.addEventListener('auth-status-changed', fetchUsers);
@@ -90,6 +107,18 @@ export const UserManagement: React.FC = () => {
       setLoading(false);
     }
   };
+  const fetchAllowedEmails = async () => {
+    try {
+      setLoadingEmails(true);
+      const response = await authAPI.getAllowedEmails();
+      setAllowedEmails(response.data);
+    } catch (err: any) {
+      console.error('Error fetching allowed emails:', err);
+      setError(err.response?.data?.detail || 'Failed to load whitelisted emails');
+    } finally {
+      setLoadingEmails(false);
+    }
+  };
 
   const handleWhitelistEmail = async () => {
     try {
@@ -97,8 +126,23 @@ export const UserManagement: React.FC = () => {
       setOpenDialog(false);
       setEmailToAdd('');
       setError(null);
+      // Refresh the list of allowed emails
+      fetchAllowedEmails();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to whitelist email');
+    }
+  };
+  
+  const handleDeleteAllowedEmail = async () => {
+    if (!emailToDelete) return;
+    
+    try {
+      await authAPI.deleteAllowedEmail(emailToDelete.allowed_email_id);
+      setDeleteConfirmDialog(false);
+      setEmailToDelete(null);
+      fetchAllowedEmails();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete whitelisted email');
     }
   };
 
@@ -123,7 +167,6 @@ export const UserManagement: React.FC = () => {
   if (loading) {
     return <Loading message="Loading users..." />;
   }
-
   return (
     <Box>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -142,8 +185,16 @@ export const UserManagement: React.FC = () => {
           {error}
         </Alert>
       )}
-
-      <TableContainer component={Paper}>
+      
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
+          <Tab label="Users" id="tab-0" />
+          <Tab label="Whitelisted Emails" id="tab-1" />
+        </Tabs>
+      </Box>
+      
+      {activeTab === 0 && (
+        <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
@@ -183,9 +234,57 @@ export const UserManagement: React.FC = () => {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
-      </TableContainer>
+        </Table>      </TableContainer>
+      )}
+      
+      {activeTab === 1 && (
+        <>
+          {loadingEmails ? (
+            <Loading message="Loading whitelisted emails..." />
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Added At</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {allowedEmails.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center">No whitelisted emails found</TableCell>
+                    </TableRow>
+                  ) : (
+                    allowedEmails.map((email) => (
+                      <TableRow key={email.allowed_email_id}>
+                        <TableCell>{email.email}</TableCell>
+                        <TableCell>{new Date(email.added_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Tooltip title="Delete email">
+                            <IconButton 
+                              color="error"
+                              onClick={() => {
+                                setEmailToDelete(email);
+                                setDeleteConfirmDialog(true);
+                              }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </>
+      )}
 
+      {/* Add Email Dialog */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
         <DialogTitle>Whitelist New Email</DialogTitle>
         <DialogContent>
@@ -203,6 +302,22 @@ export const UserManagement: React.FC = () => {
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
           <Button onClick={handleWhitelistEmail} variant="contained">
             Whitelist
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmDialog} onClose={() => setDeleteConfirmDialog(false)}>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to remove {emailToDelete?.email} from the whitelist?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmDialog(false)}>Cancel</Button>
+          <Button onClick={handleDeleteAllowedEmail} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

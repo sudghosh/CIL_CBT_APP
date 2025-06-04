@@ -82,3 +82,35 @@ async def list_allowed_emails(
     except Exception as e:
         logger.error(f"Error listing allowed emails: {e}")
         raise APIErrorHandler.handle_db_error(e, "listing allowed emails")
+
+@router.delete("/allowed-emails/{allowed_email_id}", status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
+async def delete_allowed_email(
+    request: Request,
+    allowed_email_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if email exists
+        allowed_email = db.query(AllowedEmail).filter(AllowedEmail.allowed_email_id == allowed_email_id).first()
+        if not allowed_email:
+            logger.warning(f"Attempted to delete non-existent allowed email ID: {allowed_email_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Allowed email with ID {allowed_email_id} not found"
+            )
+
+        # Delete the email
+        db.delete(allowed_email)
+        db.commit()
+        
+        logger.info(f"Email {allowed_email.email} removed from whitelist by admin {current_user.email}")
+        return {"status": "success", "message": f"Email {allowed_email.email} removed from whitelist successfully"}
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error deleting allowed email: {e}")
+        db.rollback()
+        raise APIErrorHandler.handle_db_error(e, "deleting allowed email")
