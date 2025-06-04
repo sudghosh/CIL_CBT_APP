@@ -221,11 +221,10 @@ export const authAPI = {
     }, {
       retries: 1, // Retry once
       retryDelay: 500 // Start with 500ms delay
-    }),
-  getUsers: () => api.get('/auth/users'),
-  whitelistEmail: (email: string) => api.post('/auth/whitelist-email', { email }),
+    }),  getUsers: () => api.get('/auth/users'),
+  whitelistEmail: (email: string) => api.post('/admin/allowed-emails', { email: email }),
   updateUserStatus: (userId: number, isActive: boolean) => 
-    api.put(`/auth/users/${userId}/status`, { is_active: isActive }),  updateUserRole: (userId: number, role: string) =>
+    api.put(`/auth/users/${userId}/status`, { is_active: isActive }),updateUserRole: (userId: number, role: string) =>
     api.put(`/auth/users/${userId}/role`, { role }),
   // Health check for API with caching to prevent excessive requests
   healthCheck: () => {
