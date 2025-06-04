@@ -90,6 +90,10 @@ app.include_router(questions.router)
 app.include_router(tests.router)
 app.include_router(papers.router)
 app.include_router(admin.router)
+# Add new routers for section and subsection management
+from .routers import sections, subsections
+app.include_router(sections.router)
+app.include_router(subsections.router)
 
 @app.get("/health")
 @limiter.limit("60/minute")  # Further increased rate limit for health check endpoint

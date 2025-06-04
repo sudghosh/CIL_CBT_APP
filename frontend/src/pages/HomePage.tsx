@@ -53,9 +53,8 @@ export const HomePage: React.FC = () => {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Welcome to CIL CBT Application
+    <Box>      <Typography variant="h4" gutterBottom>
+        Welcome to Question Bank Application
       </Typography>
       <Typography variant="subtitle1" gutterBottom color="textSecondary">
         Practice and prepare for your Coal India Limited Computer Based Test

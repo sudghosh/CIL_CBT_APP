@@ -420,7 +420,7 @@ const App: React.FC = () => {
         <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <LinearProgress sx={{ width: '50%', mb: 3 }} />
           <Typography variant="h5" gutterBottom>
-            Initializing CIL CBT Application
+            Initializing Question Bank Application
           </Typography>
           <Typography variant="body1" color="textSecondary">
             Please wait while we connect to the server...
