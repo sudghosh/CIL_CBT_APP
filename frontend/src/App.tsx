@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline, Box, LinearProgress, Typography, Button } from '@mui/material';
+import { CssBaseline, Box, LinearProgress, Typography, Button } from '@mui/material';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { authAPI } from './services/api';
+import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
+import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
+import { isDevToken, isDevMode } from './utils/devMode';
+import { forceAdminStatusForDevMode } from './utils/syncAuthState';
+import { setupTokenMonitor } from './utils/tokenMonitor';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
@@ -10,53 +17,14 @@ import { MockTestPage } from './pages/MockTestPage';
 import { PracticeTestPage } from './pages/PracticeTestPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { QuestionManagement } from './pages/QuestionManagement';
+import { PaperManagement } from './pages/PaperManagement';
 import { UserManagement } from './pages/UserManagement';
 import HealthCheck from './pages/HealthCheck';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevModeAuthFix } from './components/DevModeAuthFix';
-import { authAPI } from './services/api';
-import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
-import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
-import { isDevToken, isDevMode } from './utils/devMode';
-import { forceAdminStatusForDevMode } from './utils/syncAuthState';
-import { setupTokenMonitor } from './utils/tokenMonitor';
+import { NavigationAuthGuard } from './components/NavigationAuthGuard';
 
-// Create theme with better accessibility and consistent styling
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-      light: '#4791db',
-      dark: '#115293',
-    },
-    secondary: {
-      main: '#dc004e',
-      light: '#e33371',
-      dark: '#9a0036',
-    },
-    error: {
-      main: '#f44336',
-    },
-    background: {
-      default: '#f5f5f5',
-    },
-  },
-  typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    button: {
-      textTransform: 'none', // Don't uppercase button text
-    },
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 4,
-        },
-      },
-    },
-  },
-});
+// Theme is now managed by ThemeContext
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading, refreshAuthStatus, authChecked } = useAuth();
@@ -370,11 +338,6 @@ const App: React.FC = () => {
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
   const [apiHealth, setApiHealth] = useState<boolean | null>(null);
   
-  // Import NavigationAuthGuard
-  const NavigationAuthGuard = React.lazy(() => import('./components/NavigationAuthGuard').then(
-    module => ({ default: module.NavigationAuthGuard })
-  ));
-  
   // Check API health on startup
   useEffect(() => {
     // Add flag to track if component is still mounted
@@ -436,7 +399,7 @@ const App: React.FC = () => {
 
   if (!clientId) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider>
         <CssBaseline />
         <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <Typography variant="h5" color="error" gutterBottom>
@@ -452,7 +415,7 @@ const App: React.FC = () => {
   // Show loading indicator while initial API health check is in progress
   if (apiHealth === null) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider>
         <CssBaseline />
         <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <LinearProgress sx={{ width: '50%', mb: 3 }} />
@@ -469,7 +432,7 @@ const App: React.FC = () => {
 
   if (apiHealth === false) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider>
         <CssBaseline />
         <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <Typography variant="h5" color="error" gutterBottom>
@@ -499,15 +462,14 @@ const App: React.FC = () => {
         clientId={clientId}
         onScriptLoadError={() => console.error('Google API script failed to load')}
       >
-        <ThemeProvider theme={theme}>
-          <CssBaseline />          <AuthProvider>
+        <ThemeProvider>
+          <CssBaseline />
+          <AuthProvider>
             <BrowserRouter>
               {/* Dev mode auth fix button - only appears in development mode */}
               <DevModeAuthFix />
               {/* Auth state guard for navigation - maintains consistent auth state */}
-              <React.Suspense fallback={null}>
-                <NavigationAuthGuard />
-              </React.Suspense>
+              <NavigationAuthGuard />
               <Routes>
                 <Route path="/health" element={<HealthCheck />} />
                 <Route path="/login" element={<LoginPage />} />
@@ -545,10 +507,18 @@ const App: React.FC = () => {
                 />
                 {/* Admin Routes */}
                 <Route
-                  path="/manage/questions"
+                  path="/questions"
                   element={
                     <AdminRoute>
                       <QuestionManagement />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/papers"
+                  element={
+                    <AdminRoute>
+                      <PaperManagement />
                     </AdminRoute>
                   }
                 />

@@ -1,8 +1,9 @@
 import React from 'react';
-import { AppBar, Box, CssBaseline, Drawer, IconButton, List, ListItem, ListItemIcon, ListItemText, Toolbar, Typography } from '@mui/material';
-import { Menu as MenuIcon, Home, Description, Assignment, Person, ExitToApp } from '@mui/icons-material';
+import { AppBar, Box, CssBaseline, Drawer, IconButton, List, ListItem, ListItemIcon, ListItemText, Toolbar, Typography, Tooltip } from '@mui/material';
+import { Menu as MenuIcon, Home, Description, Assignment, Person, ExitToApp, Brightness4, Brightness7 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,19 +14,20 @@ const drawerWidth = 240;
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { user, isAdmin, logout } = useAuth();
+  const { mode, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
-
   const menuItems = [
     { text: 'Home', icon: <Home />, path: '/' },
     { text: 'Tests', icon: <Assignment />, path: '/tests' },
     { text: 'Results', icon: <Description />, path: '/results' },
     ...(isAdmin ? [
       { text: 'Question Bank', icon: <Description />, path: '/questions' },
-      { text: 'Users', icon: <Person />, path: '/users' },
+      { text: 'Papers & Sections', icon: <Description />, path: '/papers' },
+      { text: 'Users', icon: <Person />, path: '/manage/users' },
     ] : []),
   ];
 
@@ -70,10 +72,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             sx={{ mr: 2, display: { sm: 'none' } }}
           >
             <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          </IconButton>          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {user?.first_name ? `Welcome, ${user.first_name}` : 'Welcome'}
           </Typography>
+          <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <IconButton onClick={toggleTheme} color="inherit">
+              {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
       <Box

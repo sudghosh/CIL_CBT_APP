@@ -18,18 +18,24 @@ Base = declarative_base()
 # Get database URL from environment variable
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# For local development, use SQLite if DATABASE_URL is not set
 if not DATABASE_URL:
-    raise ValueError("Database URL not found in environment variables")
-
-# Create engine with optimized connection pool settings
-engine = create_engine(
-    DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_pre_ping=True
-)
+    logger.warning("DATABASE_URL not found, using SQLite for local development")
+    DATABASE_URL = "sqlite:///./test.db"
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False}  # Needed for SQLite
+    )
+else:
+    # Create engine with optimized connection pool settings for PostgreSQL
+    engine = create_engine(
+        DATABASE_URL,
+        poolclass=QueuePool,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_pre_ping=True
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

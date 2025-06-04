@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 import os
 from datetime import datetime
-from .routers import auth, questions, tests, papers
+from .routers import auth, questions, tests, papers, admin
 from .database.database import engine
 from .database.models import Base
 from .database.seed_data import seed_database
@@ -89,6 +89,7 @@ app.include_router(auth.router)
 app.include_router(questions.router)
 app.include_router(tests.router)
 app.include_router(papers.router)
+app.include_router(admin.router)
 
 @app.get("/health")
 @limiter.limit("60/minute")  # Further increased rate limit for health check endpoint
