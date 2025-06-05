@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel, EmailStr
+from datetime import datetime
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import logging
@@ -27,7 +28,7 @@ class AllowedEmailResponse(BaseModel):
     allowed_email_id: int
     email: str
     added_by_admin_id: int
-    added_at: str
+    added_at: datetime
 
     class Config:
         orm_mode = True
@@ -44,6 +45,14 @@ async def add_allowed_email(
         # Log the incoming request for debugging
         logger.info(f"Received whitelist request for email: {email_data.email}")
         
+        # Additional email validation (EmailStr from pydantic does basic validation)
+        if not "@" in email_data.email or not "." in email_data.email:
+            logger.warning(f"Invalid email format received: {email_data.email}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid email format: {email_data.email}. Please provide a valid email address."
+            )
+            
         # Check if email already exists
         existing_email = db.query(AllowedEmail).filter(AllowedEmail.email == email_data.email).first()
         if existing_email:
@@ -62,6 +71,9 @@ async def add_allowed_email(
         logger.info(f"Email {email_data.email} whitelisted by admin {current_user.email}")
         return {"status": "success", "message": f"Email {email_data.email} whitelisted successfully"}
     
+    except HTTPException as e:
+        # Re-raise HTTP exceptions to maintain their status codes and details
+        raise e
     except Exception as e:
         logger.error(f"Error adding allowed email: {e}")
         db.rollback()
@@ -77,10 +89,20 @@ async def list_allowed_emails(
     current_user: User = Depends(verify_admin)
 ):
     try:
+        logger.info(f"Fetching allowed emails with skip={skip} and limit={limit}")
         allowed_emails = db.query(AllowedEmail).offset(skip).limit(limit).all()
+        logger.info(f"Found {len(allowed_emails)} allowed emails")
+        
+        # For debugging purposes
+        for email in allowed_emails:
+            logger.debug(f"Email ID: {email.allowed_email_id}, Email: {email.email}, Added by: {email.added_by_admin_id}, Added at: {email.added_at}")
+        
         return allowed_emails
     except Exception as e:
         logger.error(f"Error listing allowed emails: {e}")
+        # Print full exception details for better debugging
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise APIErrorHandler.handle_db_error(e, "listing allowed emails")
 
 @router.delete("/allowed-emails/{allowed_email_id}", status_code=status.HTTP_200_OK)

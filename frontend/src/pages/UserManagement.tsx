@@ -51,8 +51,10 @@ export const UserManagement: React.FC = () => {
   const [emailToAdd, setEmailToAdd] = useState('');
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(false);
   const [emailToDelete, setEmailToDelete] = useState<AllowedEmail | null>(null);
-  const [activeTab, setActiveTab] = useState(0);
-  const [loadingEmails, setLoadingEmails] = useState(true);  useEffect(() => {
+  const [activeTab, setActiveTab] = useState(0);  const [loadingEmails, setLoadingEmails] = useState(true);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
     fetchUsers();
     fetchAllowedEmails();
     
@@ -106,42 +108,90 @@ export const UserManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-  const fetchAllowedEmails = async () => {
+  };  const fetchAllowedEmails = async () => {
     try {
       setLoadingEmails(true);
       const response = await authAPI.getAllowedEmails();
       setAllowedEmails(response.data);
+      // Clear any existing errors when successful
+      setError(null);
     } catch (err: any) {
       console.error('Error fetching allowed emails:', err);
+      // Enhanced error logging
+      console.error('Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
       setError(err.response?.data?.detail || 'Failed to load whitelisted emails');
     } finally {
       setLoadingEmails(false);
     }
-  };
-
-  const handleWhitelistEmail = async () => {
+  };  const handleWhitelistEmail = async () => {
     try {
-      await authAPI.whitelistEmail(emailToAdd);
+      // Basic email format validation
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(emailToAdd)) {
+        setError('Please enter a valid email address (e.g., user@example.com)');
+        return;
+      }
+      
+      const response = await authAPI.whitelistEmail(emailToAdd);
       setOpenDialog(false);
       setEmailToAdd('');
       setError(null);
+      
+      // Set success message
+      setSuccessMessage(`Email ${emailToAdd} whitelisted successfully`);
+      
       // Refresh the list of allowed emails
       fetchAllowedEmails();
+      
+      // Automatically clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to whitelist email');
+      console.error('Error adding whitelisted email:', err);
+      console.error('Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
+      
+      // Provide more specific error messages based on status code
+      if (err.response?.status === 422) {
+        setError('Invalid email format. Please enter a valid email address.');
+      } else if (err.response?.status === 401 || err.response?.status === 403) {
+        setError('You do not have permission to whitelist emails. Please check your admin privileges.');
+      } else {
+        setError(err.response?.data?.detail || 'Failed to whitelist email');
+      }
     }
   };
-  
-  const handleDeleteAllowedEmail = async () => {
+    const handleDeleteAllowedEmail = async () => {
     if (!emailToDelete) return;
     
     try {
       await authAPI.deleteAllowedEmail(emailToDelete.allowed_email_id);
       setDeleteConfirmDialog(false);
+      
+      // Store email for success message before clearing emailToDelete
+      const deletedEmail = emailToDelete.email;
       setEmailToDelete(null);
+      
+      // Set success message
+      setSuccessMessage(`Email ${deletedEmail} removed from whitelist successfully`);
+      
+      // Refresh the list
       fetchAllowedEmails();
+      
+      // Automatically clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
     } catch (err: any) {
+      console.error('Error deleting whitelisted email:', err);
       setError(err.response?.data?.detail || 'Failed to delete whitelisted email');
     }
   };
@@ -163,10 +213,10 @@ export const UserManagement: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to update user role');
     }
   };
-
   if (loading) {
     return <Loading message="Loading users..." />;
   }
+
   return (
     <Box>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -174,7 +224,10 @@ export const UserManagement: React.FC = () => {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setOpenDialog(true)}
+          onClick={() => {
+            setOpenDialog(true);
+            setError(null); // Clear any errors when opening the dialog
+          }}
         >
           Whitelist Email
         </Button>
@@ -183,6 +236,12 @@ export const UserManagement: React.FC = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+      
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
         </Alert>
       )}
       
