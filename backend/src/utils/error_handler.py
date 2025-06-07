@@ -11,18 +11,54 @@ class APIErrorHandler:
         logger.error(f"Database error during {operation}: {str(e)}")
         
         if isinstance(e, IntegrityError):
+            # Log detailed error information
+            logger.error(f"IntegrityError details: {repr(e)}")
+            
+            # Check for common integrity errors
+            error_msg = str(e).lower()
+            if "unique constraint" in error_msg or "duplicate" in error_msg:
+                # Extract field name if possible
+                field_name = "entry"
+                if "key" in error_msg and "(" in error_msg and ")" in error_msg:
+                    try:
+                        field_name = error_msg.split("(")[1].split(")")[0]
+                    except:
+                        pass
+                return HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A {field_name} with this value already exists"
+                )
+            
             return HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Data integrity error occurred during {operation}"
+                detail=f"Data integrity error occurred during {operation}: {str(e)}"
             )
         elif isinstance(e, SQLAlchemyError):
+            logger.error(f"SQLAlchemy error details: {repr(e)}")
             return HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Database error occurred during {operation}"
+                detail=f"Database error occurred during {operation}: {str(e)}"
             )
+            
+        # Handle validation errors
+        if hasattr(e, 'errors') and callable(getattr(e, 'errors', None)):
+            try:
+                validation_errors = e.errors()
+                logger.error(f"Validation error details: {validation_errors}")
+                # Return detailed validation errors to help debugging
+                return HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Validation error in {operation}: {validation_errors}"
+                )
+            except:
+                pass
+                
+        # General exception handling
+        logger.error(f"Unexpected exception type: {type(e).__name__}")
+        logger.error(f"Exception details: {repr(e)}")
         return HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred during {operation}"
+            detail=f"An unexpected error occurred during {operation}: {str(e)}"
         )
     
     @staticmethod

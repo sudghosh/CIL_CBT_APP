@@ -85,9 +85,33 @@ export const QuestionManagement: React.FC = () => {
       setLoading(false);
     }
   };
-
   const handleSubmit = async () => {
     try {
+      // Validate required fields
+      if (!formData.question_text || formData.question_text.trim() === '') {
+        setError('Question text is required');
+        return;
+      }
+      
+      if (!formData.paper_id || formData.paper_id <= 0) {
+        setError('Please select a paper');
+        return;
+      }
+      
+      if (!formData.section_id || formData.section_id <= 0) {
+        setError('Please select a section');
+        return;
+      }
+      
+      // Validate options
+      const emptyOptions = formData.options.filter(opt => !opt.option_text || opt.option_text.trim() === '');
+      if (emptyOptions.length > 0) {
+        setError('All options must have text');
+        return;
+      }
+      
+      console.log('Submitting question data:', JSON.stringify(formData));
+      
       if (selectedQuestion) {
         // Update existing question
         await questionsAPI.updateQuestion(selectedQuestion.question_id, formData);
@@ -97,7 +121,9 @@ export const QuestionManagement: React.FC = () => {
       }
       setOpenDialog(false);
       fetchData();
+      setError(null); // Clear any errors on success
     } catch (err: any) {
+      console.error('Error saving question:', err);
       setError(err.response?.data?.detail || 'Failed to save question');
     }
   };

@@ -5,6 +5,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
+from .middleware import RequestLoggingMiddleware
 import logging
 import os
 from datetime import datetime
@@ -62,19 +63,24 @@ app.add_middleware(SlowAPIMiddleware)
 # Add CORS middleware with development-friendly configuration
 origins = ["http://localhost:3000"]
 # In development mode, allow all origins for easier debugging
-if os.environ.get("ENV") == "development":
+if os.environ.get("ENV") == "development" or os.environ.get("CORS_ALLOW_ALL") == "true":
     origins = ["*"]
     logger.info("Development mode: CORS configured to accept all origins")
 
+# Use the built-in FastAPI CORSMiddleware for better stability and less memory usage
+logger.info("Using standard FastAPI CORSMiddleware for CORS handling")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],  # More permissive in development
+    allow_origins=["*"],  # Allow all origins in dev mode
+    allow_credentials=False,  # Must be False when using wildcard origin
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["*"],
     expose_headers=["Content-Type", "Authorization"],
     max_age=600  # Cache preflight requests for 10 minutes
 )
+
+# Add detailed request/response logging middleware for improved debugging
+app.add_middleware(RequestLoggingMiddleware)
 
 # Add request logging middleware
 @app.middleware("http")

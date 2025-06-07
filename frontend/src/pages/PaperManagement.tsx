@@ -89,14 +89,29 @@ export const PaperManagement: React.FC = () => {
       setLoading(false);
     }
   };
-
   const handleCreatePaper = async () => {
     try {
+      // Validate required fields before submission
+      if (!formData.paper_name || formData.paper_name.trim() === '') {
+        setError('Paper name is required');
+        return;
+      }
+      
+      if (formData.total_marks <= 0) {
+        setError('Total marks must be greater than 0');
+        return;
+      }
+      
+      // Log the data being sent to help with debugging
+      console.log('Creating paper with data:', JSON.stringify(formData));
+      
       await papersAPI.createPaper(formData);
       setOpenDialog(false);
       resetForm();
       fetchPapers();
+      setError(null); // Clear any previous errors on success
     } catch (err: any) {
+      console.error('Error creating paper:', err);
       setError(err.response?.data?.detail || 'Failed to create paper');
     }
   };

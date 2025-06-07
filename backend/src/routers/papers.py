@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 from typing import List
 from pydantic import BaseModel
 from slowapi import Limiter
@@ -55,6 +56,33 @@ class PaperResponse(BaseModel):
     class Config:
         from_attributes = True
 
+def serialize_paper(paper):
+    return {
+        "paper_id": paper.paper_id,
+        "paper_name": paper.paper_name,
+        "total_marks": paper.total_marks,
+        "description": paper.description,
+        "is_active": paper.is_active,
+        "sections": [
+            {
+                "section_id": section.section_id,
+                "section_name": section.section_name,
+                "marks_allocated": section.marks_allocated,
+                "description": section.description,
+                "subsections": [
+                    {
+                        "subsection_id": sub.subsection_id,
+                        "subsection_name": sub.subsection_name,
+                        "description": sub.description
+                    }
+                    for sub in section.subsections
+                ]
+            }
+            for section in paper.sections
+        ]
+    }
+
+@router.get("", response_model=List[PaperResponse])
 @router.get("/", response_model=List[PaperResponse])
 @limiter.limit("30/minute")
 async def get_papers(
@@ -63,43 +91,12 @@ async def get_papers(
     current_user: User = Depends(verify_token)
 ):
     try:
-        # Use eager loading to avoid N+1 queries
         papers = db.query(Paper).filter(
             Paper.is_active == True
         ).options(
             joinedload(Paper.sections).joinedload(Section.subsections)
         ).all()
-        
-        # Transform the data for response
-        response = []
-        for paper in papers:
-            paper_dict = {
-                "paper_id": paper.paper_id,
-                "paper_name": paper.paper_name,
-                "total_marks": paper.total_marks,
-                "description": paper.description,
-                "is_active": paper.is_active,
-                "sections": [
-                    {
-                        "section_id": section.section_id,
-                        "section_name": section.section_name,
-                        "marks_allocated": section.marks_allocated,
-                        "description": section.description,
-                        "subsections": [
-                            {
-                                "subsection_id": sub.subsection_id,
-                                "subsection_name": sub.subsection_name,
-                                "description": sub.description
-                            }
-                            for sub in section.subsections
-                        ]
-                    }
-                    for section in paper.sections
-                ]
-            }
-            response.append(paper_dict)
-        
-        return response
+        return [serialize_paper(paper) for paper in papers]
     except Exception as e:
         logger.error(f"Error retrieving papers: {str(e)}")
         raise HTTPException(
@@ -107,7 +104,19 @@ async def get_papers(
             detail="Error retrieving papers"
         )
 
+@router.options("/", include_in_schema=False)
+async def options_papers():
+    """Handle OPTIONS requests for CORS preflight"""
+    return {
+        "Allow": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PATCH, PUT, DELETE",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
 @router.post("/", response_model=PaperResponse)
+@router.post("", response_model=PaperResponse)
 @limiter.limit("10/minute")
 async def create_paper(
     request: Request,
@@ -116,7 +125,13 @@ async def create_paper(
     current_user: User = Depends(verify_admin)
 ):
     try:
-        # Create paper
+        logger.info(f"Creating paper with data: {paper}")
+        if not paper.paper_name or not paper.paper_name.strip():
+            logger.error("Paper name is missing or empty")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+                detail="Paper name is required and cannot be empty"
+            )
         db_paper = Paper(
             paper_name=paper.paper_name,
             total_marks=paper.total_marks,
@@ -125,12 +140,17 @@ async def create_paper(
             is_active=True
         )
         db.add(db_paper)
-        db.flush()
-
-        # Create sections with subsections
+        try:
+            db.flush()
+        except IntegrityError as e:
+            db.rollback()
+            logger.error(f"IntegrityError: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Paper name already exists. Please use a unique name."
+            )
         sections_to_create = []
         subsections_to_create = []
-
         for section_data in paper.sections:
             section = Section(
                 paper_id=db_paper.paper_id,
@@ -140,9 +160,7 @@ async def create_paper(
             )
             sections_to_create.append(section)
             db.add(section)
-            db.flush()  # Get section_id
-
-            # Add subsections if any
+            db.flush()
             subsections = [
                 Subsection(
                     section_id=section.section_id,
@@ -152,19 +170,14 @@ async def create_paper(
                 for sub in section_data.subsections
             ]
             subsections_to_create.extend(subsections)
-
-        # Bulk insert all records
         if subsections_to_create:
             db.bulk_save_objects(subsections_to_create)
-
-        # Commit all changes
         try:
             db.commit()
-            # Refresh paper with eager loading for response
             db_paper = db.query(Paper).options(
                 joinedload(Paper.sections).joinedload(Section.subsections)
             ).filter(Paper.paper_id == db_paper.paper_id).first()
-            return db_paper
+            return serialize_paper(db_paper)
         except Exception as e:
             db.rollback()
             logger.error(f"Error committing paper creation: {str(e)}")
@@ -172,14 +185,15 @@ async def create_paper(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create paper"
             )
-
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"HTTPException in create_paper: {e.detail}")
         raise
     except Exception as e:
-        logger.error(f"Error in create_paper: {str(e)}")
+        import traceback
+        logger.error(f"Exception in create_paper: {e}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail=f"Internal server error: {str(e)}"
         )
 
 @router.put("/{paper_id}/activate")
@@ -228,7 +242,7 @@ async def get_paper(
         if not paper:
             raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
         
-        return paper
+        return serialize_paper(paper)
     except Exception as e:
         logger.error(f"Error retrieving paper {paper_id}: {str(e)}")
         raise HTTPException(
@@ -246,12 +260,10 @@ async def update_paper(
     current_user: User = Depends(verify_admin)
 ):
     try:
-        # Check if paper exists
         db_paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
         if not db_paper:
             raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
         
-        # Update paper fields
         db_paper.paper_name = paper_update.paper_name
         db_paper.total_marks = paper_update.total_marks
         db_paper.description = paper_update.description
@@ -259,12 +271,11 @@ async def update_paper(
         db.commit()
         db.refresh(db_paper)
         
-        # Get the updated paper with eager loading
         updated_paper = db.query(Paper).options(
             joinedload(Paper.sections).joinedload(Section.subsections)
         ).filter(Paper.paper_id == paper_id).first()
         
-        return updated_paper
+        return serialize_paper(updated_paper)
     except HTTPException:
         raise
     except Exception as e:
@@ -310,4 +321,72 @@ async def delete_paper(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting paper"
+        )
+
+@router.options("/{paper_id}", include_in_schema=False)
+async def options_paper_by_id():
+    """Handle OPTIONS requests for specific paper endpoints"""
+    return {
+        "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Origin": "*", 
+        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@router.delete("/sections/{section_id}")
+@limiter.limit("10/minute")
+async def delete_section(
+    request: Request,
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        section = db.query(Section).filter(Section.section_id == section_id).first()
+        if not section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        # Check if section has subsections
+        subsections = db.query(Subsection).filter(Subsection.section_id == section_id).all()
+        if subsections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete section with existing subsections. Delete subsections first."
+            )
+        db.delete(section)
+        db.commit()
+        return {"status": "success", "message": f"Section with ID {section_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting section"
+        )
+
+@router.delete("/subsections/{subsection_id}")
+@limiter.limit("10/minute")
+async def delete_subsection(
+    request: Request,
+    subsection_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        subsection = db.query(Subsection).filter(Subsection.subsection_id == subsection_id).first()
+        if not subsection:
+            raise HTTPException(status_code=404, detail=f"Subsection with ID {subsection_id} not found")
+        db.delete(subsection)
+        db.commit()
+        return {"status": "success", "message": f"Subsection with ID {subsection_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting subsection {subsection_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting subsection"
         )
