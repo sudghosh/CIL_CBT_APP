@@ -30,6 +30,8 @@ const api = axios.create({
   },
   // Add timeout to prevent hanging requests
   timeout: 20000,
+  // Disable withCredentials for CORS with wildcard origin (*)
+  withCredentials: false,
 });
 
 // Add token to requests if it exists

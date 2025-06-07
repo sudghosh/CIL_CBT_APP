@@ -21,6 +21,28 @@ limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+@router.options("/allowed-emails", include_in_schema=False)
+async def options_allowed_emails():
+    """Handle OPTIONS requests for CORS preflight for allowed-emails endpoint"""
+    return {
+        "Allow": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@router.options("/allowed-emails/{allowed_email_id}", include_in_schema=False)
+async def options_allowed_email_by_id():
+    """Handle OPTIONS requests for specific allowed email endpoints"""
+    return {
+        "Allow": "DELETE, OPTIONS",
+        "Access-Control-Allow-Origin": "*", 
+        "Access-Control-Allow-Methods": "DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
 class AllowedEmailCreate(BaseModel):
     email: EmailStr
 

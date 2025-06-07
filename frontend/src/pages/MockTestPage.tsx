@@ -26,8 +26,7 @@ export const MockTestPage: React.FC = () => {
       // Get or create mock test template
       const templates = await testsAPI.getTemplates();
       let mockTemplate = templates.data.find((t: any) => t.test_type === 'Mock');
-      
-      if (!mockTemplate) {
+        if (!mockTemplate) {
         // Create mock test template if it doesn't exist
         mockTemplate = await testsAPI.createTemplate({
           template_name: 'Standard Mock Test',
@@ -35,6 +34,8 @@ export const MockTestPage: React.FC = () => {
           sections: [
             {
               paper_id: 1, // Paper I
+              section_id: null, // All sections
+              subsection_id: null, // All subsections
               question_count: 100,
             },
             {

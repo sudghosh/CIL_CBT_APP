@@ -63,15 +63,15 @@ export const PracticeTestPage: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    try {
-      // Create practice test template
+    try {      // Create practice test template
       const template = await testsAPI.createTemplate({
         template_name: 'Practice Test',
         test_type: 'Practice',
         sections: [
           {
             paper_id: selectedPaper,
-            section_id: selectedSection,
+            section_id: selectedSection || null,
+            subsection_id: null, // Explicitly set to null if not needed
             question_count: parseInt(questionCount),
           },
         ],

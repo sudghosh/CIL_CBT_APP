@@ -90,8 +90,12 @@ services:
       retries: 3
       start_period: 10s
     logging: *default-logging
-    # Removed memory limits to allow Docker to allocate as needed
-    command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python /app/init_db.py && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000"
+    # Add memory limit to prevent excessive memory usage
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python /app/init_db.py && uvicorn src.main:app --host 0.0.0.0 --port 8000"
 
   frontend:
     build:
@@ -109,6 +113,9 @@ services:
       - REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID}
       - WATCHPACK_POLLING=${WATCHPACK_POLLING}
       - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING}
+      # Memory optimization settings
+      - GENERATE_SOURCEMAP=false
+      - NODE_OPTIONS=--max_old_space_size=1536
     networks:
       - cil-network
     depends_on:
@@ -119,8 +126,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     logging: *default-logging
-    # Removed memory limits to allow Docker to allocate as needed
 
 volumes:
   pgdata:

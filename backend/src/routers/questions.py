@@ -21,6 +21,28 @@ limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/questions", tags=["questions"])
 
+@router.options("/", include_in_schema=False)
+async def options_questions():
+    """Handle OPTIONS requests for CORS preflight"""
+    return {
+        "Allow": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PATCH, PUT, DELETE",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@router.options("/{question_id}", include_in_schema=False)
+async def options_question_by_id():
+    """Handle OPTIONS requests for specific question endpoints"""
+    return {
+        "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Origin": "*", 
+        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
 # Define valid question types and difficulty levels
 QuestionTypeEnum = Literal["MCQ", "True/False"]
 DifficultyLevelEnum = Literal["Easy", "Medium", "Hard"]
@@ -138,6 +160,46 @@ async def create_question(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
+        )
+
+@router.get("/", response_model=List[QuestionResponse])
+@limiter.limit("30/minute")
+async def get_questions(
+    request: Request,
+    skip: int = 0,
+    limit: int = 100,
+    paper_id: Optional[int] = None,
+    section_id: Optional[int] = None,
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Start with a base query
+        query = db.query(Question)
+
+        # Apply filters if they exist
+        if paper_id:
+            query = query.filter(Question.paper_id == paper_id)
+        if section_id:
+            query = query.filter(Question.section_id == section_id)
+        if is_active is not None:
+            query = query.filter(Question.is_active == is_active)
+        
+        # Get total count
+        total_count = query.count()
+        logger.info(f"Found {total_count} questions matching criteria")
+        
+        # Apply pagination
+        questions = query.offset(skip).limit(limit).all()
+        
+        return questions
+    
+    except Exception as e:
+        logger.error(f"Error fetching questions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving questions"
         )
 
 @router.get("/{question_id}", response_model=QuestionResponse)
