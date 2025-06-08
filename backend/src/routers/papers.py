@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -56,6 +56,15 @@ class PaperResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class SectionUpdate(BaseModel):
+    section_name: str
+    marks_allocated: int = None
+    description: str = None
+
+class SubsectionUpdate(BaseModel):
+    subsection_name: str
+    description: str = None
+
 def serialize_paper(paper):
     return {
         "paper_id": paper.paper_id,
@@ -91,11 +100,16 @@ async def get_papers(
     current_user: User = Depends(verify_token)
 ):
     try:
-        papers = db.query(Paper).filter(
-            Paper.is_active == True
-        ).options(
+        # Show all papers to admins, only active to others
+        is_admin = getattr(current_user, "is_admin", None)
+        if is_admin is None:
+            is_admin = getattr(current_user, "role", "").lower() == "admin"
+        query = db.query(Paper).options(
             joinedload(Paper.sections).joinedload(Section.subsections)
-        ).all()
+        )
+        if not is_admin:
+            query = query.filter(Paper.is_active == True)
+        papers = query.all()
         return [serialize_paper(paper) for paper in papers]
     except Exception as e:
         logger.error(f"Error retrieving papers: {str(e)}")
@@ -390,3 +404,106 @@ async def delete_subsection(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting subsection"
         )
+
+@router.put("/sections/{section_id}")
+@limiter.limit("10/minute")
+async def update_section(
+    request: Request,
+    section_id: int,
+    section_update: SectionUpdate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Check if section exists
+        db_section = db.query(Section).filter(Section.section_id == section_id).first()
+        if not db_section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        # Update section fields
+        db_section.section_name = section_update.section_name
+        db_section.marks_allocated = section_update.marks_allocated
+        db_section.description = section_update.description
+        db.commit()
+        db.refresh(db_section)
+        # Get the updated section with eager loading
+        updated_section = db.query(Section).options(
+            joinedload(Section.subsections)
+        ).filter(Section.section_id == section_id).first()
+        # Serialize subsections to dicts for response
+        return {
+            "section_id": updated_section.section_id,
+            "paper_id": updated_section.paper_id,
+            "section_name": updated_section.section_name,
+            "marks_allocated": updated_section.marks_allocated,
+            "description": updated_section.description,
+            "subsections": [
+                {
+                    "subsection_id": sub.subsection_id,
+                    "subsection_name": sub.subsection_name,
+                    "description": sub.description
+                }
+                for sub in updated_section.subsections
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error updating section"
+        )
+
+@router.put("/subsections/{subsection_id}")
+@limiter.limit("10/minute")
+async def update_subsection(
+    request: Request,
+    subsection_id: int,
+    subsection_update: SubsectionUpdate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        subsection = db.query(Subsection).filter(Subsection.subsection_id == subsection_id).first()
+        if not subsection:
+            logger.error(f"Subsection with ID {subsection_id} not found for update.")
+            raise HTTPException(status_code=404, detail=f"Subsection with ID {subsection_id} not found")
+        subsection.subsection_name = subsection_update.subsection_name
+        subsection.description = subsection_update.description
+        db.commit()
+        db.refresh(subsection)
+        return {
+            "subsection_id": subsection.subsection_id,
+            "subsection_name": subsection.subsection_name,
+            "description": subsection.description
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating subsection {subsection_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating subsection: {str(e)}"
+        )
+
+@router.options("/sections/{section_id}", include_in_schema=False)
+async def options_section_by_id():
+    return {
+        "Allow": "PUT, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@router.options("/subsections/{subsection_id}", include_in_schema=False)
+async def options_subsection_by_id():
+    return {
+        "Allow": "PUT, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }

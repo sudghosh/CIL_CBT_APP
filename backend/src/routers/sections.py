@@ -211,7 +211,22 @@ async def update_section(
             joinedload(Section.subsections)
         ).filter(Section.section_id == section_id).first()
         
-        return updated_section
+        # Serialize subsections to dicts for response
+        return {
+            "section_id": updated_section.section_id,
+            "paper_id": updated_section.paper_id,
+            "section_name": updated_section.section_name,
+            "marks_allocated": updated_section.marks_allocated,
+            "description": updated_section.description,
+            "subsections": [
+                {
+                    "subsection_id": sub.subsection_id,
+                    "subsection_name": sub.subsection_name,
+                    "description": sub.description
+                }
+                for sub in updated_section.subsections
+            ]
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -258,3 +273,13 @@ async def delete_section(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting section"
         )
+
+@router.options("/{section_id}", include_in_schema=False)
+async def options_section_by_id():
+    return {
+        "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }

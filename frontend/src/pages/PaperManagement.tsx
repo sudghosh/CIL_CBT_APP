@@ -31,6 +31,7 @@ import {
   Cancel as InactiveIcon,
 } from '@mui/icons-material';
 import { papersAPI } from '../services/api';
+import { sectionsAPI, subsectionsAPI } from '../services/api';
 import { Loading } from '../components/Loading';
 
 interface Section {
@@ -73,6 +74,12 @@ export const PaperManagement: React.FC = () => {
     sections: [],
   });
 
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editType, setEditType] = useState<'paper' | 'section' | 'subsection' | null>(null);
+  const [editPaper, setEditPaper] = useState<ExamPaper | null>(null);
+  const [editSection, setEditSection] = useState<Section & {paper_id?: number} | null>(null);
+  const [editSubsection, setEditSubsection] = useState<Subsection & {section_id?: number, paper_id?: number} | null>(null);
+
   useEffect(() => {
     fetchPapers();
   }, []);
@@ -84,7 +91,25 @@ export const PaperManagement: React.FC = () => {
       setPapers(response.data);
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load papers');
+      // Enhanced error logging
+      console.error('Error fetching papers:', err);
+      console.error('Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
+      // Handle authentication errors
+      if (err.status === 401 || err.response?.status === 401) {
+        setError('Authentication error. Please try logging out and back in.');
+        sessionStorage.setItem('redirectAfterLogin', '/manage/papers');
+        sessionStorage.setItem('authError', 'Your session has expired. Please log in again.');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          window.location.href = '/login?session_expired=true';
+        }, 1500);
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Failed to load papers');
+      }
     } finally {
       setLoading(false);
     }
@@ -126,6 +151,18 @@ export const PaperManagement: React.FC = () => {
       fetchPapers();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to update paper status');
+    }
+  };
+
+  const handleDeletePaper = async (paperId: number) => {
+    if (!window.confirm('Are you sure you want to delete this paper? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await papersAPI.deletePaper(paperId);
+      fetchPapers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete paper');
     }
   };
 
@@ -212,6 +249,69 @@ export const PaperManagement: React.FC = () => {
     });
   };
 
+  const handleEditPaper = (paper: ExamPaper) => {
+    setEditType('paper');
+    setEditPaper({...paper});
+    setEditDialogOpen(true);
+  };
+  const handleEditSection = (section: Section, paper: ExamPaper) => {
+    setEditType('section');
+    setEditSection({...section, paper_id: paper.paper_id});
+    setEditDialogOpen(true);
+  };
+  const handleEditSubsection = (subsection: Subsection, section: Section, paper: ExamPaper) => {
+    setEditType('subsection');
+    setEditSubsection({...subsection, section_id: section.section_id, paper_id: paper.paper_id});
+    setEditDialogOpen(true);
+  };
+  const handleEditDialogClose = () => {
+    setEditDialogOpen(false);
+    setEditType(null);
+    setEditPaper(null);
+    setEditSection(null);
+    setEditSubsection(null);
+  };
+  const handleEditPaperSave = async () => {
+    if (!editPaper) return;
+    try {
+      await papersAPI.updatePaper(editPaper.paper_id, {
+        paper_name: editPaper.paper_name,
+        total_marks: editPaper.total_marks,
+        description: editPaper.description,
+        sections: editPaper.sections
+      });
+      setEditDialogOpen(false);
+      fetchPapers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update paper');
+    }
+  };
+  const handleEditSectionSave = async () => {
+    if (!editSection) return;
+    try {      await sectionsAPI.updateSection(Number(editSection.section_id), {
+        section_name: editSection.section_name,
+        marks_allocated: editSection.marks_allocated,
+        description: editSection.description
+      });
+      setEditDialogOpen(false);
+      fetchPapers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update section');
+    }
+  };
+  const handleEditSubsectionSave = async () => {
+    if (!editSubsection) return;
+    try {      await subsectionsAPI.updateSubsection(Number(editSubsection.subsection_id), {
+        subsection_name: editSubsection.subsection_name,
+        description: editSubsection.description
+      });
+      setEditDialogOpen(false);
+      fetchPapers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update subsection');
+    }
+  };
+
   if (loading) {
     return <Loading message="Loading papers..." />;
   }
@@ -245,14 +345,30 @@ export const PaperManagement: React.FC = () => {
         papers.map((paper) => (
           <MuiPaper key={paper.paper_id} sx={{ mb: 3, p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography variant="h6">{paper.paper_name}</Typography>
               <Box>
+                <Typography variant="h6">{paper.paper_name} <span style={{color:'#888', fontWeight:400}}>(ID: {paper.paper_id})</span></Typography>
+              </Box>
+              <Box>
+                <IconButton
+                  color="primary"
+                  onClick={() => handleEditPaper(paper)}
+                  title="Edit Paper"
+                >
+                  <EditIcon />
+                </IconButton>
                 <IconButton
                   color={paper.is_active ? 'success' : 'error'}
                   onClick={() => handleTogglePaperStatus(paper.paper_id, paper.is_active)}
                   title={paper.is_active ? 'Deactivate Paper' : 'Activate Paper'}
                 >
                   {paper.is_active ? <ActiveIcon /> : <InactiveIcon />}
+                </IconButton>
+                <IconButton
+                  color="error"
+                  onClick={() => handleDeletePaper(paper.paper_id)}
+                  title="Delete Paper"
+                >
+                  <DeleteIcon />
                 </IconButton>
               </Box>
             </Box>
@@ -283,10 +399,19 @@ export const PaperManagement: React.FC = () => {
               paper.sections.map((section) => (
                 <Accordion key={section.section_id}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography>{section.section_name}</Typography>
+                    <Typography>{section.section_name} <span style={{color:'#888', fontWeight:400}}>(ID: {section.section_id})</span></Typography>
                     <Typography sx={{ ml: 2, color: 'text.secondary' }}>
                       ({section.marks_allocated} marks)
                     </Typography>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      sx={{ ml: 2 }}
+                      onClick={e => { e.stopPropagation(); handleEditSection(section, paper); }}
+                      title="Edit Section"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Typography variant="body2" sx={{ mb: 1 }}>
@@ -304,6 +429,8 @@ export const PaperManagement: React.FC = () => {
                               <TableRow>
                                 <TableCell>Name</TableCell>
                                 <TableCell>Description</TableCell>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Actions</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -311,6 +438,17 @@ export const PaperManagement: React.FC = () => {
                                 <TableRow key={subsection.subsection_id}>
                                   <TableCell>{subsection.subsection_name}</TableCell>
                                   <TableCell>{subsection.description || 'No description'}</TableCell>
+                                  <TableCell>{subsection.subsection_id}</TableCell>
+                                  <TableCell>
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => handleEditSubsection(subsection, section, paper)}
+                                      title="Edit Subsection"
+                                    >
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -397,7 +535,7 @@ export const PaperManagement: React.FC = () => {
                 <DeleteIcon />
               </IconButton>
               
-              <Typography variant="subtitle1">Section {sectionIndex + 1}</Typography>
+              <Typography variant="subtitle1">Section {sectionIndex + 1} {section.section_id ? <span style={{color:'#888', fontWeight:400}}>(ID: {section.section_id})</span> : null}</Typography>
               
               <TextField
                 fullWidth
@@ -445,7 +583,7 @@ export const PaperManagement: React.FC = () => {
                     key={subsectionIndex}
                     sx={{
                       p: 2,
-                      bgcolor: '#f9f9f9',
+                      bgcolor: 'background.paper', // Use theme background for dark mode support
                       borderRadius: '4px',
                       mb: 1,
                       position: 'relative',
@@ -469,6 +607,9 @@ export const PaperManagement: React.FC = () => {
                       size="small"
                       required
                     />
+                    <Typography variant="caption" color="text.secondary">
+                      {subsection.subsection_id ? `ID: ${subsection.subsection_id}` : ''}
+                    </Typography>
                     
                     <TextField
                       fullWidth
@@ -495,6 +636,100 @@ export const PaperManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Edit Dialog - place at the bottom of the main component */}
+      <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit {editType === 'paper' ? 'Paper' : editType === 'section' ? 'Section' : 'Subsection'}</DialogTitle>
+        <DialogContent dividers>
+          {editType === 'paper' && editPaper && (
+            <>
+              <TextField
+                fullWidth
+                label="Paper Name"
+                value={editPaper.paper_name}
+                onChange={e => setEditPaper({...editPaper, paper_name: e.target.value})}
+                margin="normal"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Total Marks"
+                type="number"
+                value={editPaper.total_marks}
+                onChange={e => setEditPaper({...editPaper, total_marks: parseInt(e.target.value) || 0})}
+                margin="normal"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                rows={3}
+                value={editPaper.description}
+                onChange={e => setEditPaper({...editPaper, description: e.target.value})}
+                margin="normal"
+              />
+            </>
+          )}
+          {editType === 'section' && editSection && (
+            <>
+              <TextField
+                fullWidth
+                label="Section Name"
+                value={editSection.section_name}
+                onChange={e => setEditSection({...editSection, section_name: e.target.value})}
+                margin="normal"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Marks Allocated"
+                type="number"
+                value={editSection.marks_allocated}
+                onChange={e => setEditSection({...editSection, marks_allocated: parseInt(e.target.value) || 0})}
+                margin="normal"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                rows={2}
+                value={editSection.description}
+                onChange={e => setEditSection({...editSection, description: e.target.value})}
+                margin="normal"
+              />
+            </>
+          )}
+          {editType === 'subsection' && editSubsection && (
+            <>
+              <TextField
+                fullWidth
+                label="Subsection Name"
+                value={editSubsection.subsection_name}
+                onChange={e => setEditSubsection({...editSubsection, subsection_name: e.target.value})}
+                margin="normal"
+                required
+              />
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                rows={2}
+                value={editSubsection.description}
+                onChange={e => setEditSubsection({...editSubsection, description: e.target.value})}
+                margin="normal"
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleEditDialogClose}>Cancel</Button>
+          {editType === 'paper' && <Button variant="contained" onClick={handleEditPaperSave}>Save</Button>}
+          {editType === 'section' && <Button variant="contained" onClick={handleEditSectionSave}>Save</Button>}
+          {editType === 'subsection' && <Button variant="contained" onClick={handleEditSubsectionSave}>Save</Button>}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
-};
+}
