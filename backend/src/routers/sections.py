@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session, joinedload
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -55,28 +55,24 @@ class SectionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/", response_model=List[SectionResponse])
+@router.get("/", response_model=Dict[str, object])
 @limiter.limit("30/minute")
 async def get_sections(
     request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     paper_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_token)
 ):
     try:
-        # Start with base query
         query = db.query(Section)
-        
-        # Apply paper_id filter if provided
         if paper_id:
             query = query.filter(Section.paper_id == paper_id)
-        
-        # Use eager loading to avoid N+1 queries
+        total = query.count()
         sections = query.options(
             joinedload(Section.subsections)
-        ).all()
-        
-        # Transform the data for response
+        ).offset((page-1)*page_size).limit(page_size).all()
         response = []
         for section in sections:
             section_dict = {
@@ -95,8 +91,7 @@ async def get_sections(
                 ]
             }
             response.append(section_dict)
-        
-        return response
+        return {"items": response, "total": total, "page": page, "page_size": page_size}
     except Exception as e:
         logger.error(f"Error retrieving sections: {str(e)}")
         raise HTTPException(

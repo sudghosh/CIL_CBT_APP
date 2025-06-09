@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import Paper, Section, Subsection, Question, QuestionOption
 from typing import List
+from datetime import date
 
 def create_sample_paper(db: Session) -> Paper:
     # Create main paper
@@ -87,7 +88,7 @@ def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
                     section_id=section.section_id,
                     subsection_id=subsection.subsection_id,
                     default_difficulty_level="Easy",
-                    is_active=True
+                    valid_until=date(9999, 12, 31)
                 )
                 db.add(question)
                 db.commit()

@@ -33,6 +33,7 @@ import {
 import { papersAPI } from '../services/api';
 import { sectionsAPI, subsectionsAPI } from '../services/api';
 import { Loading } from '../components/Loading';
+import Pagination from '@mui/material/Pagination';
 
 interface Section {
   section_id?: number;
@@ -80,15 +81,25 @@ export const PaperManagement: React.FC = () => {
   const [editSection, setEditSection] = useState<Section & {paper_id?: number} | null>(null);
   const [editSubsection, setEditSubsection] = useState<Subsection & {section_id?: number, paper_id?: number} | null>(null);
 
-  useEffect(() => {
-    fetchPapers();
-  }, []);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20); // You can make this user-configurable if desired
+  const [total, setTotal] = useState(0);
 
-  const fetchPapers = async () => {
+  useEffect(() => {
+    fetchPapers(page);
+  }, [page]);
+
+  const fetchPapers = async (pageNum = 1) => {
     try {
       setLoading(true);
-      const response = await papersAPI.getPapers();
-      setPapers(response.data);
+      const response = await papersAPI.getPapers({ page: pageNum, page_size: pageSize });
+      if (response.data.items) {
+        setPapers(response.data.items);
+        setTotal(response.data.total);
+      } else {
+        setPapers(response.data);
+        setTotal(response.data.length);
+      }
       setError(null);
     } catch (err: any) {
       // Enhanced error logging
@@ -730,6 +741,69 @@ export const PaperManagement: React.FC = () => {
           {editType === 'subsection' && <Button variant="contained" onClick={handleEditSubsectionSave}>Save</Button>}
         </DialogActions>
       </Dialog>
+
+      <TableContainer component={MuiPaper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Paper Name</TableCell>
+              <TableCell>Total Marks</TableCell>
+              <TableCell>Description</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {papers.map((paper) => (
+              <TableRow key={paper.paper_id}>
+                <TableCell>{paper.paper_name}</TableCell>
+                <TableCell>{paper.total_marks}</TableCell>
+                <TableCell>{paper.description || 'No description'}</TableCell>
+                <TableCell>
+                  <Typography
+                    variant="body2"
+                    color={paper.is_active ? 'success.main' : 'error.main'}
+                    sx={{ fontWeight: 'bold' }}
+                  >
+                    {paper.is_active ? 'Active' : 'Inactive'}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    color="primary"
+                    onClick={() => handleEditPaper(paper)}
+                    title="Edit Paper"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    color={paper.is_active ? 'success' : 'error'}
+                    onClick={() => handleTogglePaperStatus(paper.paper_id, paper.is_active)}
+                    title={paper.is_active ? 'Deactivate Paper' : 'Activate Paper'}
+                  >
+                    {paper.is_active ? <ActiveIcon /> : <InactiveIcon />}
+                  </IconButton>
+                  <IconButton
+                    color="error"
+                    onClick={() => handleDeletePaper(paper.paper_id)}
+                    title="Delete Paper"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+        <Pagination
+          count={Math.ceil(total / pageSize)}
+          page={page}
+          onChange={(_, value) => setPage(value)}
+          color="primary"
+        />
+      </Box>
     </Box>
   );
 }

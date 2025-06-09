@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from typing import List
+from typing import List, Dict
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -91,11 +91,13 @@ def serialize_paper(paper):
         ]
     }
 
-@router.get("", response_model=List[PaperResponse])
-@router.get("/", response_model=List[PaperResponse])
+@router.get("", response_model=Dict[str, object])
+@router.get("/", response_model=Dict[str, object])
 @limiter.limit("30/minute")
 async def get_papers(
     request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_token)
 ):
@@ -109,8 +111,9 @@ async def get_papers(
         )
         if not is_admin:
             query = query.filter(Paper.is_active == True)
-        papers = query.all()
-        return [serialize_paper(paper) for paper in papers]
+        total = query.count()
+        items = query.offset((page-1)*page_size).limit(page_size).all()
+        return {"items": [serialize_paper(paper) for paper in items], "total": total, "page": page, "page_size": page_size}
     except Exception as e:
         logger.error(f"Error retrieving papers: {str(e)}")
         raise HTTPException(
