@@ -256,7 +256,7 @@ export const authAPI = {
 
 // Questions API
 export const questionsAPI = {
-  getQuestions: (params?: { paper_id?: number; section_id?: number }) =>
+  getQuestions: (params?: { paper_id?: number; section_id?: number; page?: number; page_size?: number }) =>
     api.get('/questions', { params }),
   getQuestion: (id: number) => api.get(`/questions/${id}`),
   createQuestion: (data: QuestionData) => api.post('/questions', data),
@@ -288,7 +288,8 @@ export const testsAPI = {
 
 // Papers API
 export const papersAPI = {
-  getPapers: () => api.get('/papers'),
+  getPapers: (params?: { page?: number; page_size?: number }) =>
+    api.get('/papers', { params }),
   getPaper: (paperId: number) => api.get(`/papers/${paperId}`),
   createPaper: (data: any) => api.post('/papers', data),
   updatePaper: (paperId: number, data: any) => api.put(`/papers/${paperId}`, data),
@@ -299,10 +300,8 @@ export const papersAPI = {
 
 // Sections API
 export const sectionsAPI = {
-  getSections: (paperId?: number) => {
-    const params = paperId ? { paper_id: paperId } : {};
-    return api.get('/sections', { params });
-  },
+  getSections: (params?: { paper_id?: number; page?: number; page_size?: number }) =>
+    api.get('/sections', { params }),
   getSection: (sectionId: number) => api.get(`/sections/${sectionId}`),
   createSection: (data: any) => api.post('/sections', data),
   updateSection: (sectionId: number, data: any) => api.put(`/sections/${sectionId}`, data),

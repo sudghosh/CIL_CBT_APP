@@ -1,4 +1,5 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float, Date
+from datetime import date
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from .database import Base
@@ -88,7 +89,7 @@ class Question(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    is_active = Column(Boolean, default=True, index=True)
+    valid_until = Column(Date, nullable=False, default=date(9999, 12, 31))
 
     # Enhanced relationships
     paper = relationship("Paper", back_populates="questions")

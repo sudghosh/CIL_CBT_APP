@@ -343,14 +343,14 @@ const App: React.FC = () => {
     // Add flag to track if component is still mounted
     let isMounted = true;
 
-    // Check if health was already verified in this session or the last 10 minutes
+    // Check if health was already verified in this session or the last 30 minutes
     const cachedHealth = sessionStorage.getItem('apiHealthChecked');
     const lastCheck = sessionStorage.getItem('apiHealthLastChecked');
     const now = Date.now();
-    const tenMinutes = 10 * 60 * 1000; // 10 minutes in milliseconds
+    const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
     
-    if (cachedHealth === 'true' && lastCheck && (now - parseInt(lastCheck)) < tenMinutes) {
-      console.log('Using cached API health status from the last 10 minutes');
+    if (cachedHealth === 'true' && lastCheck && (now - parseInt(lastCheck)) < thirtyMinutes) {
+      console.log('Using cached API health status from the last 30 minutes');
       setApiHealth(true);
       return;
     }
