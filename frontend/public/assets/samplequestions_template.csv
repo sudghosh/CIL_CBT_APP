@@ -1,9 +1,4 @@
-# This is a sample CSV template for question upload.
-# Columns marked with (REQUIRED) must be present and filled.
-# paper_name, section_name, subsection_name must match existing entries in the database.
-# valid_until is optional. If omitted, the question will be valid indefinitely (default: 31-12-9999).
 question_text,question_type,default_difficulty_level,paper_id,section_id,subsection_id,correct_option_index,option_0,option_1,option_2,option_3,explanation,valid_until
 What is the capital of France?,MCQ,Easy,1,1,1,0,Paris,London,Berlin,Rome,Paris is the capital of France.,31-12-9999
 Which planet is known as the Red Planet?,MCQ,Medium,1,1,2,1,Earth,Mars,Jupiter,Venus,Mars is often called the Red Planet.,31-12-9999
-# For True/False questions, use question_type=True/False and only option_0 and option_1 (e.g., True, False)
 Is the sky blue?,True/False,Easy,1,1,1,0,True,False,,,The sky appears blue due to Rayleigh scattering.,31-12-9999

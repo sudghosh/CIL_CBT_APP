@@ -26,6 +26,9 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/ico
 import { questionsAPI, papersAPI } from '../services/api';
 import { Loading } from '../components/Loading';
 import Pagination from '@mui/material/Pagination';
+import Tooltip from '@mui/material/Tooltip';
+import InfoIcon from '@mui/icons-material/Info';
+import GetAppIcon from '@mui/icons-material/GetApp';
 
 interface ExamPaper {
   paper_id: number;
@@ -189,25 +192,81 @@ export const QuestionManagement: React.FC = () => {
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start' }}>
         <Typography variant="h4" sx={{ mr: 5, mt: 0.5 }}>Question Management</Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 180 }}>
-          <input
-            type="file"
-            accept=".csv,.xlsx"
-            style={{ display: 'none' }}
-            id="file-upload"
-            onChange={handleFileUpload}
-          />
-          <label htmlFor="file-upload">
-            <Button
-              component="span"
-              variant="contained"
-              color="primary"
-              fullWidth
-              sx={{ mb: 1 }}
-              disabled={uploading}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <input
+              type="file"
+              accept=".csv,.xlsx"
+              style={{ display: 'none' }}
+              id="file-upload"
+              onChange={handleFileUpload}
+            />
+            <label htmlFor="file-upload">
+              <Button
+                component="span"
+                variant="contained"
+                color="primary"
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading...' : 'Upload Questions CSV'}
+              </Button>
+            </label>
+            <Tooltip
+              title={
+                <>
+                  <p style={{ margin: 0 }}>Please ensure your CSV file adheres to the following:</p>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    <li>All columns marked (REQUIRED) must be present and contain valid data.</li>
+                    <li>For <b>valid_until</b>, use DD-MM-YYYY format (e.g., 31-12-2025). If this column is left empty or is not present, the question will be valid indefinitely (until 31-12-9999).</li>
+                    <li><b>paper_name</b>, <b>section_name</b>, <b>subsection_name</b> must exactly match existing entries in the system.</li>
+                    <li>Ensure options <b>option_0</b>, <b>option_1</b>, etc., are provided for multiple-choice questions based on <b>correct_option_index</b>.</li>
+                    <li>Each row represents one question.</li>
+                  </ul>
+                  <p style={{ margin: 0 }}>Download the sample template for exact column headers.</p>
+                </>
+              }
+              placement="top"
+              arrow
             >
-              {uploading ? 'Uploading...' : 'Upload Questions'}
-            </Button>
-          </label>
+              <IconButton size="small" color="info">
+                <InfoIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Download Sample CSV Template" placement="top" arrow>
+              <IconButton
+                color="primary"
+                component="a"
+                href="/assets/samplequestions_template.csv"
+                download
+                sx={{ ml: 1 }}
+              >
+                <GetAppIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Download All Questions (CSV)" placement="top" arrow>
+              <IconButton
+                color="secondary"
+                onClick={async () => {
+                  try {
+                    const response = await questionsAPI.downloadAllQuestions();
+                    const blob = new Blob([response.data], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'all_questions.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                  } catch (err) {
+                    setError('Failed to download all questions.');
+                  }
+                }}
+                sx={{ ml: 1 }}
+              >
+                <GetAppIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <Button
             variant="contained"
             color="primary"
@@ -217,7 +276,7 @@ export const QuestionManagement: React.FC = () => {
               setSelectedQuestion(null);
               setFormData({
                 question_text: '',
-                question_type: 'MCQ', // default value
+                question_type: 'MCQ',
                 paper_id: 0,
                 section_id: 0,
                 subsection_id: null,
@@ -239,28 +298,6 @@ export const QuestionManagement: React.FC = () => {
           </Button>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Box sx={{ ml: 5, flex: 1, maxWidth: 500, bgcolor: 'background.paper', border: '1px dashed #888', borderRadius: 2, p: 2 }}>
-          <Typography variant="subtitle1" color="primary" sx={{ fontWeight: 600 }}>
-            CSV/XLSX Upload Format Instructions:
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Upload a CSV/XLSX file with the following columns:
-          </Typography>
-          <Typography variant="body2" component="div" sx={{ mt: 1, pl: 2 }}>
-            <ul style={{ marginTop: 0, marginBottom: 0 }}>
-              <li>question_text: The full text of the question</li>
-              <li>option_a, option_b, option_c, option_d: The text for each option</li>
-              <li>correct_answer_index: 0-indexed (e.g., 0 for option A, 1 for option B)</li>
-              <li>paper_id: ID of the associated paper</li>
-              <li>section_id: ID of the associated section</li>
-              <li>subsection_id: ID of the associated subsection</li>
-              <li>explanation (optional): Explanation for the correct answer</li>
-            </ul>
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Note: paper_id, section_id, and subsection_id are required fields for properly associating questions.
-          </Typography>
-        </Box>
       </Box>
 
       {error && (
@@ -481,17 +518,6 @@ export const QuestionManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Button
-        variant="outlined"
-        color="secondary"
-        fullWidth
-        href="/samplequestions_template.csv"
-        download
-        sx={{ mt: 1 }}
-      >
-        Download Sample CSV Template
-      </Button>
     </Box>
   );
 };

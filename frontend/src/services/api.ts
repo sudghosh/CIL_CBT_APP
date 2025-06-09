@@ -269,6 +269,8 @@ export const questionsAPI = {
   },
   updateQuestion: (id: number, data: any) => api.put(`/questions/${id}`, data),
   deactivateQuestion: (id: number) => api.put(`/questions/${id}/deactivate`),
+  downloadAllQuestions: () =>
+    api.get('/questions/admin/download-all', { responseType: 'blob' }),
 };
 
 // Tests API
