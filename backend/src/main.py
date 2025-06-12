@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -8,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from .middleware import RequestLoggingMiddleware
 import logging
 import os
+import traceback
 from datetime import datetime
 from .routers import auth, questions, tests, papers, admin
 from .database.database import engine
@@ -67,11 +70,15 @@ if os.environ.get("ENV") == "development" or os.environ.get("CORS_ALLOW_ALL") ==
     origins = ["*"]
     logger.info("Development mode: CORS configured to accept all origins")
 
+logger.info(f"CORS origins configured: {origins}")  # Explicit log for CORS origins
+# IMPORTANT: For local development, ensure http://localhost:3000 is included in CORS_ORIGINS if using environment variables or config files.
+# Example: CORS_ORIGINS=http://localhost:3000,https://your-production-domain.com
+
 # Use the built-in FastAPI CORSMiddleware for better stability and less memory usage
 logger.info("Using standard FastAPI CORSMiddleware for CORS handling")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in dev mode
+    allow_origins=origins,  # Use the origins variable for flexibility
     allow_credentials=False,  # Must be False when using wildcard origin
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -89,6 +96,58 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     logger.info(f"Response Status: {response.status_code}")
     return response
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler for all unhandled exceptions.
+    This ensures we log details of any unexpected errors.
+    """
+    # Get the full traceback
+    error_detail = f"{exc.__class__.__name__}: {str(exc)}\n{traceback.format_exc()}"
+    
+    # Log the error with request details
+    logger.error(
+        f"Unhandled exception in {request.method} {request.url}:\n"
+        f"Client IP: {request.client.host}\n"
+        f"User-Agent: {request.headers.get('user-agent', 'Unknown')}\n"
+        f"Error: {error_detail}"
+    )
+    
+    # Return a consistent error response
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error occurred. The error has been logged."}
+    )
+
+# Add a validation error handler to log and format validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors and provide cleaner error messages
+    """
+    # Extract error details
+    error_details = exc.errors()
+    error_messages = []
+    
+    for error in error_details:
+        location = " -> ".join(str(loc) for loc in error["loc"])
+        message = error["msg"]
+        error_messages.append(f"{location}: {message}")
+    
+    # Log the validation error
+    logger.warning(
+        f"Validation error in {request.method} {request.url}:\n"
+        f"Client IP: {request.client.host}\n"
+        f"Errors: {', '.join(error_messages)}"
+    )
+    
+    # Return a more user-friendly error
+    return JSONResponse(
+        status_code=422,
+        content={"detail": error_messages}
+    )
 
 # Include routers
 app.include_router(auth.router)

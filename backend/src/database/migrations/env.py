@@ -1,7 +1,19 @@
-from logging.config import fileConfig
+# /app/src/database/migrations/env.py
 
+from logging.config import fileConfig
+import asyncio
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+import os
+import sys
+# Dynamically set sys.path so 'src' is importable regardless of working directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+
+# Ensure the project root is in sys.path for module imports
+# The project root is typically '/app' inside the Docker container.
+sys.path.insert(0, '/app')
 
 from alembic import context
 
@@ -18,7 +30,30 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+
+# IMPORTANT: Ensure your Base and all your models are correctly imported here.
+# The paths below assume your project structure. Adjust if necessary.
+
+# Assuming your Base object is defined in src/database/database.py
+from src.database.database import Base
+
+# NEW: Import all your model classes directly from the src.database.models module
+# This is correct because all models are now in src/database/models.py (a single file).
+from src.database.models import (
+    User,
+    AllowedEmail,
+    Paper,
+    Section,
+    Subsection,
+    Question,
+    QuestionOption,
+    TestAttempt,
+    TestAnswer,
+)
+
+# All your SQLAlchemy models' metadata are collected here for Alembic to inspect
+target_metadata = Base.metadata
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -50,29 +85,42 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
+def do_run_migrations(connection) -> None:
+    """Configures the context and runs migrations for online mode."""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,  # Recommended for better type comparison in autogenerate
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    In this scenario we need to create an AsyncEngine
+    and associate an async connection with the context.
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    # Get the database URL from Alembic's config (alembic.ini)
+    connectable = AsyncEngine(
+        engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+            # Ensure the URL is passed, even if it's already in the config section
+            url=config.get_main_option("sqlalchemy.url")
+        )
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
-
-        with context.begin_transaction():
-            context.run_migrations()
+    async with connectable.connect() as connection:
+        # Pass the async connection to the synchronous do_run_migrations
+        # using connection.run_sync, which handles the async bridge.
+        await connection.run_sync(do_run_migrations)
 
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    # This is the entry point for online migrations.
+    # It runs the async run_migrations_online function.
+    asyncio.run(run_migrations_online())
