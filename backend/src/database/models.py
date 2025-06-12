@@ -1,3 +1,16 @@
+# -------------------------------------
+# IMPORTANT DATABASE MIGRATION REQUIRED!
+# -------------------------------------
+# Changes made in this models.py (e.g., ON DELETE CASCADE, cascade="all, delete-orphan")
+# require a database schema update.
+#
+# You MUST run database migrations manually after making these changes:
+# 1. Access your backend container shell: `docker exec -it <your-backend-container-name> bash`
+# 2. Run Alembic commands:
+#    - Generate migration script: `alembic revision --autogenerate -m "Add cascade delete for question answers"`
+#    - Apply migration: `alembic upgrade head`
+# -------------------------------------
+
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float, Date
 from datetime import date
 from sqlalchemy.orm import relationship, validates
@@ -41,37 +54,36 @@ class Paper(Base):
     description = Column(Text)
     is_active = Column(Boolean, default=True, index=True)
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships with ordering
-    sections = relationship("Section", back_populates="paper", order_by="Section.section_id")
-    questions = relationship("Question", back_populates="paper")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())    # Relationships with ordering
+    sections = relationship("Section", back_populates="paper", order_by="Section.section_id", cascade="all, delete-orphan")
+    # Enable cascading delete for questions when a paper is deleted
+    questions = relationship("Question", back_populates="paper", cascade="all, delete-orphan")  # NOTE: Requires DB migration if changed after initial deploy
     created_by = relationship("User", back_populates="created_papers")
 
 class Section(Base):
     __tablename__ = "sections"
 
     section_id = Column(Integer, primary_key=True)
-    paper_id = Column(Integer, ForeignKey("papers.paper_id"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.paper_id", ondelete="CASCADE"), nullable=False)
     section_name = Column(String, nullable=False)
     marks_allocated = Column(Integer)
     description = Column(Text)
 
     # Relationships with ordering
     paper = relationship("Paper", back_populates="sections")
-    subsections = relationship("Subsection", back_populates="section", order_by="Subsection.subsection_id")
-    questions = relationship("Question", back_populates="section")
+    subsections = relationship("Subsection", back_populates="section", order_by="Subsection.subsection_id", cascade="all, delete-orphan")
+    questions = relationship("Question", back_populates="section", cascade="all, delete-orphan")
 
 class Subsection(Base):
     __tablename__ = "subsections"
 
     subsection_id = Column(Integer, primary_key=True)
-    section_id = Column(Integer, ForeignKey("sections.section_id"), nullable=False)
+    section_id = Column(Integer, ForeignKey("sections.section_id", ondelete="CASCADE"), nullable=False)
     subsection_name = Column(String, nullable=False)
     description = Column(Text)
 
     section = relationship("Section", back_populates="subsections")
-    questions = relationship("Question", back_populates="subsection")
+    questions = relationship("Question", back_populates="subsection", cascade="all, delete-orphan")
 
 class Question(Base):
     __tablename__ = "questions"
@@ -89,15 +101,14 @@ class Question(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    valid_until = Column(Date, nullable=False, default=date(9999, 12, 31))
-
-    # Enhanced relationships
+    valid_until = Column(Date, nullable=False, default=date(9999, 12, 31))    # Enhanced relationships
     paper = relationship("Paper", back_populates="questions")
     section = relationship("Section", back_populates="questions")
     subsection = relationship("Subsection", back_populates="questions")
     created_by = relationship("User", back_populates="created_questions")
-    options = relationship("QuestionOption", back_populates="question", order_by="QuestionOption.option_order")
-    test_answers = relationship("TestAnswer", back_populates="question")
+    options = relationship("QuestionOption", back_populates="question", order_by="QuestionOption.option_order", cascade="all, delete-orphan")
+    # Enable cascading delete for test_answers
+    test_answers = relationship("TestAnswer", back_populates="question", cascade="all, delete-orphan")  # NOTE: Requires DB migration if changed after initial deploy
 
     @validates('question_type')
     def validate_question_type(self, key, value):
@@ -115,7 +126,7 @@ class QuestionOption(Base):
     __tablename__ = "question_options"
 
     option_id = Column(Integer, primary_key=True)
-    question_id = Column(Integer, ForeignKey("questions.question_id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.question_id", ondelete="CASCADE"), nullable=False)
     option_text = Column(Text, nullable=False)
     option_order = Column(Integer, nullable=False)
 
@@ -206,7 +217,7 @@ class TestAnswer(Base):
 
     answer_id = Column(Integer, primary_key=True)
     attempt_id = Column(Integer, ForeignKey("test_attempts.attempt_id"), nullable=False)
-    question_id = Column(Integer, ForeignKey("questions.question_id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.question_id", ondelete="CASCADE"), nullable=False)  # NOTE: Requires DB migration if changed after initial deploy
     selected_option_index = Column(Integer)
     time_taken_seconds = Column(Integer, nullable=False)
     marks = Column(Float)

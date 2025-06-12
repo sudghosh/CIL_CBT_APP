@@ -12,14 +12,16 @@ export class APIError extends Error {
   detail: string;
   code?: string;
   originalError?: Error;
+  axiosResponse?: any;
 
-  constructor(message: string, status: number = 500, code?: string, originalError?: Error) {
+  constructor(message: string, status: number = 500, code?: string, originalError?: Error, axiosResponse?: any) {
     super(message);
     this.name = 'APIError';
     this.status = status;
     this.detail = message;
     this.code = code;
     this.originalError = originalError;
+    this.axiosResponse = axiosResponse;
     
     // Ensure proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, APIError.prototype);
@@ -44,6 +46,20 @@ export class AuthenticationError extends APIError {
 
 // Handle API errors with improved error classification
 export const handleAPIError = (error: unknown): APIError => {
+  // Special debugging for DELETE operation errors
+  if (error instanceof AxiosError && error.config?.method === 'delete') {
+    console.group('[DEBUG][DELETE] Error Details:');
+    console.error('Delete operation failed with:', error.message);
+    console.error('Request URL:', error.config?.url);
+    console.error('Response status:', error.response?.status);
+    console.error('Response data:', error.response?.data);
+    console.error('Response headers:', error.response?.headers);
+    if (error.response?.status === 500) {
+      console.error('[DEBUG][DELETE] Server Error: This might be a cascade delete issue or a database constraint violation');
+    }
+    console.groupEnd();
+  }
+
   // Network errors
   if (error instanceof AxiosError && error.code === 'ERR_NETWORK') {
     return new NetworkError();
@@ -68,7 +84,7 @@ export const handleAPIError = (error: unknown): APIError => {
     }
     
     // Other status codes
-    return new APIError(message, status);
+    return new APIError(message, status, undefined, error, error.response);
   }
   
   // If it's already an APIError, return it

@@ -246,15 +246,16 @@ async def delete_section(
         if not db_section:
             raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
         
-        # Check if section has subsections
+        # Log the deletion operation
+        logger.info(f"Deleting section {section_id} with cascading delete for subsections and questions")
+        
+        # Get subsections to delete (for logging purposes)
         subsections = db.query(Subsection).filter(Subsection.section_id == section_id).all()
         if subsections:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete section with existing subsections. Delete subsections first."
-            )
+            subsection_ids = [subsection.subsection_id for subsection in subsections]
+            logger.info(f"Section {section_id} has {len(subsections)} subsections that will be deleted: {subsection_ids}")
         
-        # Delete the section
+        # Delete the section - cascade delete will handle subsections and related questions
         db.delete(db_section)
         db.commit()
         

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Body, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from typing import List, Dict
 from pydantic import BaseModel
 from slowapi import Limiter
@@ -317,19 +318,47 @@ async def delete_paper(
         if not db_paper:
             raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
         
-        # Check if paper has sections
+        # Log the deletion operation
+        logger.info(f"Deleting paper {paper_id} with cascading delete for sections, subsections, and questions")
+        
+        # Get sections to delete (for logging purposes)
         sections = db.query(Section).filter(Section.paper_id == paper_id).all()
         if sections:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete paper with existing sections. Delete sections first."
-            )
+            section_ids = [section.section_id for section in sections]
+            logger.info(f"Paper {paper_id} has {len(sections)} sections that will be deleted: {section_ids}")
+              # Get subsections that will be deleted (for logging purposes)
+            subsections = db.query(Subsection).filter(Subsection.section_id.in_(section_ids)).all()
+            if subsections:
+                subsection_ids = [subsection.subsection_id for subsection in subsections]
+                logger.info(f"Sections {section_ids} have {len(subsections)} subsections that will be deleted: {subsection_ids}")
         
-        # Delete the paper
-        db.delete(db_paper)
-        db.commit()
-        
-        return {"status": "success", "message": f"Paper with ID {paper_id} deleted successfully"}
+        # Delete the paper - cascade delete will handle sections, subsections, and questions
+        try:
+            # First ensure SQLAlchemy loads any relationships by refreshing the object
+            db.refresh(db_paper)
+            
+            # Delete the paper using ORM
+            db.delete(db_paper)
+            db.commit()
+            
+            # Log successful deletion
+            logger.info(f"Paper {paper_id} deleted successfully with cascade delete")
+            return {"status": "success", "message": f"Paper with ID {paper_id} deleted successfully"}
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error during paper deletion commit: {str(e)}")
+              # Fallback approach: try using raw SQL if ORM approach fails
+            try:
+                logger.info(f"Attempting direct SQL deletion for paper {paper_id}")
+                # Execute raw SQL delete with proper parameterization
+                db.execute(text("DELETE FROM papers WHERE paper_id = :paper_id"), {"paper_id": paper_id})
+                db.commit()
+                logger.info(f"Paper {paper_id} deleted successfully using direct SQL")
+                return {"status": "success", "message": f"Paper with ID {paper_id} deleted successfully"}
+            except Exception as sql_error:
+                db.rollback()
+                logger.error(f"SQL deletion approach also failed: {str(sql_error)}")
+                raise
     except HTTPException:
         raise
     except Exception as e:

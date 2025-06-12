@@ -8,12 +8,13 @@ from slowapi.util import get_remote_address
 import pandas as pd
 import logging
 import time
+import traceback  # Added explicit import for traceback
 from datetime import date, datetime
 from fastapi.responses import StreamingResponse
 from io import StringIO
 
 from ..database.database import get_db
-from ..database.models import Question, QuestionOption, User, Paper, Section, Subsection
+from ..database.models import Question, QuestionOption, User, Paper, Section, Subsection, TestAnswer
 from ..auth.auth import verify_token, verify_admin
 
 # Configure logging
@@ -652,3 +653,68 @@ async def download_all_questions(
         'Content-Type': 'text/csv'
     }
     return StreamingResponse(output, headers=headers, media_type='text/csv')
+
+@router.delete("/{question_id}")
+async def delete_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    logger.info(f"[DEBUG][DELETE] Starting delete operation for question ID: {question_id} by admin {current_user.email}")
+    try:
+        # First check if the question exists
+        question = db.query(Question).filter(Question.question_id == question_id).first()
+        if not question:
+            logger.warning(f"Attempted to delete non-existent question ID: {question_id}")
+            raise HTTPException(status_code=404, detail="Question not found")
+
+        # Log related objects to help with debugging
+        logger.info(f"[DEBUG][DELETE] Found question with ID: {question_id}, paper_id: {question.paper_id}, section_id: {question.section_id}")
+        
+        # Count related objects before delete
+        options_count = db.query(QuestionOption).filter(QuestionOption.question_id == question_id).count()
+        answers_count = db.query(TestAnswer).filter(TestAnswer.question_id == question_id).count()
+        
+        logger.info(f"[DEBUG][DELETE] Question has {options_count} options and {answers_count} test answers")
+
+        # Explicitly delete the options first to avoid foreign key constraint violations
+        if options_count > 0:
+            logger.info(f"[DEBUG][DELETE] Deleting {options_count} options for question {question_id}")
+            try:
+                db.query(QuestionOption).filter(QuestionOption.question_id == question_id).delete()
+                logger.info(f"[DEBUG][DELETE] Options for question {question_id} deleted successfully")
+            except Exception as options_error:
+                logger.error(f"[DEBUG][DELETE] Error deleting options: {options_error}")
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Error deleting question options: {str(options_error)}")
+
+        # Delete related test answers if they exist
+        if answers_count > 0:
+            logger.info(f"[DEBUG][DELETE] Deleting {answers_count} test answers for question {question_id}")
+            try:
+                db.query(TestAnswer).filter(TestAnswer.question_id == question_id).delete()
+                logger.info(f"[DEBUG][DELETE] Test answers for question {question_id} deleted successfully")
+            except Exception as answers_error:
+                logger.error(f"[DEBUG][DELETE] Error deleting test answers: {answers_error}")
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Error deleting test answers: {str(answers_error)}")
+
+        # Perform the delete with extra error handling
+        try:
+            db.delete(question)
+            logger.info(f"[DEBUG][DELETE] Question object marked for deletion")
+            db.commit()
+            logger.info(f"Question {question_id} deleted successfully by admin {current_user.email}")
+            return {"status": "success", "message": f"Question {question_id} deleted"}
+        except Exception as commit_error:
+            logger.error(f"[DEBUG][DELETE] Error during commit: {commit_error}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error committing delete: {str(commit_error)}")
+
+    except HTTPException as e:
+        logger.warning(f"[DEBUG][DELETE] HTTP exception during delete: {e.status_code}, {e.detail}")
+        raise e
+    except Exception as e:
+        logger.error(f"[DEBUG][DELETE] Error deleting question {question_id}: {e}\n{traceback.format_exc()}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

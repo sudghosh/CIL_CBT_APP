@@ -269,6 +269,24 @@ export const questionsAPI = {
   },
   updateQuestion: (id: number, data: any) => api.put(`/questions/${id}`, data),
   deactivateQuestion: (id: number) => api.put(`/questions/${id}/deactivate`),
+  deleteQuestion: (id: number) => {
+    console.log(`[DEBUG][API] Initiating DELETE request for question ID: ${id}`);
+    return api.delete(`/questions/${id}`)
+      .then(response => {
+        console.log(`[DEBUG][API] DELETE question ${id} succeeded:`, response);
+        return response;
+      })
+      .catch(error => {
+        console.error(`[DEBUG][API] DELETE question ${id} failed:`, error);
+        console.error(`[DEBUG][API] Error details:`, {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          headers: error.response?.headers
+        });
+        throw error;
+      });
+  },
   downloadAllQuestions: () =>
     api.get('/questions/admin/download-all', { responseType: 'blob' }),
 };
