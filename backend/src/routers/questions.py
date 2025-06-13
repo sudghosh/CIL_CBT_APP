@@ -1,17 +1,53 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, text, or_
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional, Literal, Any, Union
 from pydantic import BaseModel, Field, validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import pandas as pd
+import numpy as np
 import logging
 import time
 import traceback  # Added explicit import for traceback
 from datetime import date, datetime
 from fastapi.responses import StreamingResponse
 from io import StringIO
+
+# Helper function to safely convert NumPy/pandas data types to Python native types
+def safe_convert(value: Any) -> Any:
+    """
+    Convert NumPy/pandas data types to Python native types to prevent 
+    database adapter errors.
+    """
+    if value is None:
+        return None
+    
+    # Handle numpy integer types
+    if hasattr(value, 'dtype') and np.issubdtype(value.dtype, np.integer):
+        return int(value)
+    
+    # Handle numpy float types
+    if hasattr(value, 'dtype') and np.issubdtype(value.dtype, np.floating):
+        return float(value)
+    
+    # Handle numpy boolean types
+    if hasattr(value, 'dtype') and np.issubdtype(value.dtype, np.bool_):
+        return bool(value)
+    
+    # Handle pandas Timestamp
+    if hasattr(value, 'timestamp'):
+        return value.to_pydatetime()
+    
+    # Handle any other numpy type by converting to its native Python equivalent
+    if hasattr(value, 'item'):
+        try:
+            return value.item()
+        except:
+            pass
+    
+    # Return as-is if no conversion needed
+    return value
 
 from ..database.database import get_db
 from ..database.models import Question, QuestionOption, User, Paper, Section, Subsection, TestAnswer
@@ -215,7 +251,7 @@ async def get_questions(
         # Only return valid questions
         query = query.filter(Question.valid_until >= date.today())
         total = query.count()
-        items = query.offset((page-1)*page_size).limit(5).all()
+        items = query.offset((page-1)*page_size).limit(page_size).all()
         logger.info(f"Fetched {len(items)} questions from DB in {time.time() - start_time:.2f}s (total={total})")
         ser_start = time.time()
         serialized = []
@@ -290,155 +326,181 @@ async def get_question(
             detail="Error retrieving question"
         )
 
-@router.post("/upload")
-@limiter.limit("10/minute")
+@router.post("/upload", dependencies=[Depends(verify_admin)])
 async def upload_questions(
-    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(verify_admin)
+    current_user: User = Depends(verify_token)
 ):
-    try:
-        import traceback
-        import os
-        start_time = time.time()
-        filename = file.filename.lower()
-        if filename.endswith('.csv'):
-            df = pd.read_csv(file.file)
-        elif filename.endswith('.xlsx') or filename.endswith('.xls'):
-            df = pd.read_excel(file.file)
-        else:
-            logger.warning(f"Unsupported file type: {filename}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unsupported file type. Please upload a .csv or .xlsx file."
-            )
-
-        # --- Flexible header mapping for common CSV formats ---
-        for i, col in enumerate(['a', 'b', 'c', 'd']):
-            opt_col = f'option_{i}'
-            if opt_col not in df.columns:
-                for candidate in [
-                    f'option_{col}', f'option_{chr(97+i)}', f'option_{chr(65+i)}',
-                    f'option_{i}', f'option_{col.upper()}', f'option_{col.lower()}']:
-                    if candidate in df.columns:
-                        df[opt_col] = df[candidate]
-                        break
-        for i, col in enumerate(['a', 'b', 'c', 'd']):
-            if f'option_{i}' not in df.columns and f'option_{col}' in df.columns:
-                df[f'option_{i}'] = df[f'option_{col}']
-        if 'correct_option_index' not in df.columns and 'correct_answer_index' in df.columns:
-            df['correct_option_index'] = df['correct_answer_index']
-        if 'explanation' not in df.columns:
-            for col in df.columns:
-                if 'explanation' in col:
-                    df['explanation'] = df[col]
-                    break
-        required_columns = [
-            'question_text', 'question_type', 'correct_option_index', 'paper_id',
-            'option_0', 'option_1', 'option_2', 'option_3'
-        ]
-        # valid_until is optional in CSV, but will be handled below
-        missing = [col for col in required_columns if col not in df.columns]
-        if missing:
-            logger.warning(f"Missing required columns: {missing}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Missing required columns in upload: {', '.join(missing)}. Please check your CSV headers. Download the latest template from the upload page."
-            )
-
-        # Validate that required fields are not null/empty in each row
-        for idx, row in df.iterrows():
-            for col in required_columns:
-                if pd.isnull(row[col]) or (isinstance(row[col], str) and not row[col].strip()):
-                    logger.warning(f"Row {idx+1} missing value for required column: {col}")
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Row {idx+1} is missing a value for required column: {col}. Please check your CSV."
-                    )
-
-        options_to_create = []
-        questions_created = []
-        question_ids = []
-        for idx, row in df.iterrows():
-            try:
-                # Parse valid_until
-                valid_until = None
-                if 'valid_until' in row and pd.notnull(row['valid_until']) and str(row['valid_until']).strip():
-                    try:
-                        valid_until = datetime.strptime(str(row['valid_until']).strip(), '%d-%m-%Y').date()
-                    except Exception:
-                        logger.warning(f"Row {idx+1} has invalid valid_until: {row['valid_until']}")
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Row {idx+1} has invalid valid_until date. Use DD-MM-YYYY format."
-                        )
-                else:
-                    valid_until = date(9999, 12, 31)
-                db_question = Question(
-                    question_text=row['question_text'],
-                    question_type=row['question_type'],
-                    correct_option_index=row['correct_option_index'],
-                    explanation=row.get('explanation', None),
-                    paper_id=row['paper_id'],
-                    section_id=row.get('section_id'),
-                    subsection_id=row.get('subsection_id'),
-                    default_difficulty_level=row.get('default_difficulty_level', 'Easy'),
-                    valid_until=valid_until,
-                    created_by_user_id=current_user.user_id
-                )
-                db.add(db_question)
-                db.flush()  # Assigns question_id
-                question_ids.append(db_question.question_id)
-                for i in range(4):
-                    option = QuestionOption(
-                        question_id=db_question.question_id,
-                        option_text=row[f'option_{i}'],
-                        option_order=i
-                    )
-                    options_to_create.append(option)
-                questions_created.append({
-                    'question_id': db_question.question_id,
-                    'question_text': db_question.question_text
-                })
-            except HTTPException:
-                raise
-            except Exception as row_e:
-                logger.error(f"Row {idx} failed: {row_e}")
-                db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Error in row {idx+1}: {row_e}"
-                )
-        db.bulk_save_objects(options_to_create)
-        try:
-            db.commit()
-            logger.info(f"Uploaded {len(questions_created)} questions in {time.time() - start_time:.2f}s")
-            return {
-                "status": "success",
-                "message": f"Successfully uploaded {len(questions_created)} questions",
-                "question_ids": question_ids,
-                "questions": questions_created
-            }
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error committing upload: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to commit uploaded questions"
-            )
-    except HTTPException as he:
-        db.rollback()
-        logger.error(f"Upload error: {he.detail}")
-        raise he
-    except Exception as e:
-        db.rollback()
-        import traceback
-        logger.error(f"Error uploading questions: {str(e)}\n{traceback.format_exc()}")
+    """
+    Upload questions from a CSV or Excel file.
+    Requires all the columns as per the sample template.
+    """
+    logger.info(f"[QUESTIONS ENDPOINT] POST /questions/upload called with file: {file.filename}")
+    allowed_extensions = ['.csv', '.xlsx', '.xls']
+    
+    # Check file extension
+    file_ext = file.filename.lower().split(".")[-1]
+    if f'.{file_ext}' not in allowed_extensions:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading questions: {str(e)}"
+            status_code=400,
+            detail=f"Unsupported file format. Please upload a CSV or Excel file. Got: {file_ext}"
         )
+    
+    try:
+        # Read the content
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="File is empty")
+        
+        # Parse CSV/Excel based on extension
+        try:
+            if file_ext == 'csv':
+                df = pd.read_csv(StringIO(content.decode('utf-8')))
+            else:  # Excel
+                import io
+                df = pd.read_excel(io.BytesIO(content))
+        except Exception as e:
+            logger.error(f"Error parsing file: {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Error parsing file: {str(e)}"
+            )
+        
+        # Validate required columns
+        required_columns = [
+            'question_text', 'question_type', 'default_difficulty_level', 
+            'paper_id', 'section_id', 'correct_option_index', 
+            'option_0', 'option_1'
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required columns: {', '.join(missing_columns)}"
+            )
+          # Check for paper existence first
+        unique_paper_ids = df['paper_id'].unique()
+        for paper_id in unique_paper_ids:
+            # Convert any NumPy data type to Python native type to avoid adapter errors
+            python_paper_id = safe_convert(paper_id)
+            paper = db.query(Paper).filter(Paper.paper_id == python_paper_id).first()
+            if not paper:
+                logger.error(f"Paper ID {python_paper_id} referenced in CSV does not exist in database")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Paper with ID {python_paper_id} does not exist. Please create it first."
+                )
+                
+        # Process each row
+        questions_created = 0
+        errors = []
+
+        for index, row in df.iterrows():
+            try:
+                # Skip empty rows
+                if pd.isna(row['question_text']) or str(row['question_text']).strip() == '':
+                    continue
+                
+                # Validate required values are present for this row
+                for col in required_columns:
+                    if pd.isna(row[col]) or str(row[col]).strip() == '':
+                        raise ValueError(f"Row {index+2} missing value for required column: {col}")
+                
+                # For MCQ, ensure all options are provided
+                if row['question_type'] == 'MCQ':
+                    # MCQ needs at least option_0, option_1, option_2, option_3
+                    for opt_idx in range(4):
+                        opt_col = f'option_{opt_idx}'
+                        if opt_col not in df.columns or pd.isna(row[opt_col]) or str(row[opt_col]).strip() == '':
+                            raise ValueError(f"Row {index+2} missing value for required column for MCQ: {opt_col}")                # Create the question - use safe_convert for all values to handle NumPy data types
+                question = Question(
+                    question_text=str(row['question_text']),
+                    question_type=str(row['question_type']),
+                    correct_option_index=safe_convert(row['correct_option_index']),
+                    paper_id=safe_convert(row['paper_id']),
+                    section_id=safe_convert(row['section_id']),
+                    default_difficulty_level=str(row['default_difficulty_level']),
+                    created_by_user_id=current_user.user_id
+                )                # Add optional fields if present
+                if 'subsection_id' in df.columns and not pd.isna(row['subsection_id']):
+                    question.subsection_id = safe_convert(row['subsection_id'])  # Convert numpy.int64 to Python int
+                
+                if 'explanation' in df.columns and not pd.isna(row['explanation']):
+                    question.explanation = row['explanation']
+                
+                if 'valid_until' in df.columns and not pd.isna(row['valid_until']):
+                    try:
+                        # Parse date in DD-MM-YYYY format
+                        date_parts = row['valid_until'].split('-')
+                        if len(date_parts) == 3:
+                            day, month, year = map(int, date_parts)
+                            question.valid_until = date(year, month, day)
+                    except Exception as date_error:
+                        logger.warning(f"Error parsing valid_until date: {date_error}")
+                
+                # Add to session
+                db.add(question)
+                db.flush()  # Get the question_id
+
+                # Create options
+                option_count = 2  # Minimum
+                if row['question_type'] == 'MCQ':
+                    option_count = 4  # MCQs need all 4
+                
+                options = []
+                for i in range(option_count):
+                    opt_col = f'option_{i}'
+                    if opt_col in df.columns and not pd.isna(row[opt_col]):
+                        option = QuestionOption(
+                            question_id=question.question_id,
+                            option_text=row[opt_col],
+                            option_order=i
+                        )
+                        options.append(option)
+                
+                db.add_all(options)
+                questions_created += 1
+                
+            except ValueError as ve:
+                # Validation error
+                errors.append(str(ve))
+            except Exception as e:
+                # Other error
+                errors.append(f"Error in row {index+2}: {str(e)}")
+          # Commit if no errors, otherwise rollback
+        if errors:
+            db.rollback()
+            logger.error(f"Errors importing questions: {errors}")
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "Errors importing questions", "errors": errors}
+            )
+        else:
+            db.commit()
+            logger.info(f"Successfully imported {questions_created} questions")
+            return {"message": f"Successfully imported {questions_created} questions"}
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error processing upload: {e}\n{traceback.format_exc()}")
+        db.rollback()
+        
+        # Check for specific numpy data type errors and provide helpful message
+        if "numpy.int64" in str(e) or "can't adapt type" in str(e):
+            logger.error("NumPy data type conversion error detected. Enhancing error message.")
+            raise HTTPException(
+                status_code=500,
+                detail="Data type conversion error. This has been fixed in the latest version. Please restart the backend and try again."
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing upload: {str(e)}"
+            )
 
 @router.get("/search")
 @limiter.limit("20/minute")
