@@ -259,12 +259,131 @@ export const questionsAPI = {
   getQuestions: (params?: { paper_id?: number; section_id?: number; page?: number; page_size?: number }) =>
     api.get('/questions', { params }),
   getQuestion: (id: number) => api.get(`/questions/${id}`),
-  createQuestion: (data: QuestionData) => api.post('/questions', data),
-  uploadQuestions: (file: File) => {
+  createQuestion: (data: QuestionData) => api.post('/questions', data),  uploadQuestions: (file: File) => {
+    console.log(`Preparing to upload file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+    
+    // Additional validation to prevent empty files
+    if (file.size === 0) {
+      console.error('Attempted to upload an empty file');
+      return Promise.reject(new Error('File is empty. Please ensure the file contains data.'));
+    }
+    
+    // Read and log a small sample of the file to check content (for debugging)
+    const debugFileCheck = async () => {
+      try {
+        // For text files only (CSV)
+        if (file.type === 'text/csv') {
+          const sample = await file.slice(0, 200).text();
+          console.log('CSV file content sample:', sample);
+          
+          // Validate basic structure
+          if (!sample.includes('question_text') || !sample.includes('option_0')) {
+            console.warn('Warning: CSV may not contain required headers');
+          }
+        }
+      } catch (e) {
+        console.error('Debug file check failed:', e);
+      }
+    };
+    
+    // Run the debug check
+    debugFileCheck();
+    
     const formData = new FormData();
     formData.append('file', file);
+    
+    // Debug: Log form data contents
+    console.log('Form data entries:');
+    // Use Array.from to avoid iterator issues with older TypeScript targets
+    Array.from(formData.entries()).forEach(entry => {
+      console.log(`- ${entry[0]}: ${entry[1] instanceof File ? `File(${(entry[1] as File).name})` : entry[1]}`);
+    });
+    
+    // Set specific options for file uploads
     return api.post('/questions/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 
+        // Let the browser set the Content-Type with boundary automatically
+        // 'Content-Type' will be set automatically with the correct boundary by the browser
+        'Accept': 'application/json'
+      },
+      // Longer timeout for large file uploads
+      timeout: 120000, // 120 seconds
+      // Add progress monitoring for large files
+      onUploadProgress: (progressEvent) => {
+        const total = progressEvent.total || 0;
+        console.log(`Upload progress: ${total > 0 ? Math.round((progressEvent.loaded * 100) / total) : 0}%`);
+      },
+      validateStatus: function (status) {
+        // Additional detailed logging for error status codes
+        if (status === 422) {
+          console.warn('Upload validation failed with 422 - the file likely has content that fails validation rules');
+        } else if (status === 400) {
+          console.warn('Upload validation failed with 400 - the file likely has missing required columns or incorrect structure');
+        } else if (status === 500) {
+          console.error('Server error during file upload - check server logs for details');
+        }
+        // Return default validation (status >= 200 && status < 300)
+        return status >= 200 && status < 300;
+      },
+      // Capture errors during the request lifecycle
+      transformRequest: [
+        function (data, headers) {
+          if (data instanceof FormData) {
+            console.log('Sending FormData with file in transformRequest');
+            
+            // Clear any existing Content-Type to let the browser set the correct one with boundary
+            if (headers && headers['Content-Type']) {
+              delete headers['Content-Type'];
+            }
+          }
+          return data;
+        }
+      ],
+      // Custom error handling for upload-specific issues
+      transformResponse: [
+        function(data) {
+          // Try to parse the response as JSON
+          try {
+            const parsedData = JSON.parse(data);
+            
+            // Look for specific database errors like foreign key violations
+            if (parsedData.detail && typeof parsedData.detail === 'string') {
+              const errorDetail = parsedData.detail;
+              
+              // Check for foreign key violation on paper_id
+              if (errorDetail.includes('violates foreign key constraint') && 
+                  errorDetail.includes('questions_paper_id_fkey') &&
+                  errorDetail.includes('Key (paper_id)')) {
+                
+                // Extract the paper_id from the error message
+                const paperIdMatch = errorDetail.match(/Key \(paper_id\)=\((\d+)\)/);
+                const paperId = paperIdMatch ? paperIdMatch[1] : 'unknown';
+                
+                // Enhance error message
+                parsedData.detail = `The paper with ID ${paperId} does not exist in the database. Please create this paper first or update your CSV to use an existing paper ID.`;
+                parsedData.suggestion = "Run the create_sample_paper.ps1 script to create a sample paper with ID 1";
+                parsedData.errorType = "PAPER_NOT_FOUND";
+              }
+            }
+            
+            return parsedData;
+          } catch (e) {
+            // If it's not valid JSON, return the original string
+            return data;
+          }
+        }
+      ]
+    }).catch(error => {
+      // Additional error processing for constraint violations
+      if (error.response && error.response.data && error.response.data.detail) {
+        // Handle foreign key errors
+        if (error.response.data.detail.includes('foreign key constraint')) {
+          // This is handled in transformResponse, but adding extra check here
+          console.error('Database constraint violation:', error.response.data.detail);
+        }
+      }
+      
+      throw error; // Re-throw to maintain error chain
     });
   },
   updateQuestion: (id: number, data: any) => api.put(`/questions/${id}`, data),
@@ -316,6 +435,16 @@ export const papersAPI = {
   deletePaper: (paperId: number) => api.delete(`/papers/${paperId}`),
   activatePaper: (paperId: number) => api.put(`/papers/${paperId}/activate`),
   deactivatePaper: (paperId: number) => api.put(`/papers/${paperId}/deactivate`),
+  // New function to create a sample paper with ID 1 for testing
+  createSamplePaper: () => api.post('/papers', {
+    paper_id: 1, // Request specific ID
+    title: 'Sample Test Paper',
+    description: 'This is a sample paper for testing question uploads',
+    time_limit_minutes: 60,
+    passing_percentage: 60,
+    is_active: true,
+    // The backend will use the authenticated user as created_by_user_id
+  }),
 };
 
 // Sections API
