@@ -1378,23 +1378,34 @@ async def get_next_adaptive_question(
                 "message": "No more questions available",
                 "next_question": None
             }
+          # Select a random question from the matching ones
+        next_question_id = random.choice(matching_questions).question_id
         
-        # Select a random question from the matching ones
-        next_question = random.choice(matching_questions)
-        logger.info(f"Selected next question: id={next_question.question_id}, difficulty={next_question.difficulty_level}")
+        # Get the question with options eagerly loaded
+        next_question = db.query(Question).options(
+            joinedload(Question.options)
+        ).filter(
+            Question.question_id == next_question_id
+        ).first()
         
-        # Extract options from the question
+        logger.info(f"Selected next question: id={next_question.question_id}, difficulty={next_question.difficulty_level}, option count={len(next_question.options) if hasattr(next_question, 'options') else 0}")
+          # Extract options from the question using its relationship to QuestionOption
         options = []
-        for i in range(1, 5):
-            option_text_attr = f"option_{i}_text"
-            option_attr = f"option_{i}"
+        
+        # Check if the question has related options through the relationship
+        if hasattr(next_question, "options") and next_question.options:
+            # Sort options by option_order to ensure they're in the correct order
+            sorted_options = sorted(next_question.options, key=lambda opt: opt.option_order)
+            for option in sorted_options:
+                options.append(option.option_text)
+        
+        # If no options found or not enough options, ensure we have exactly 4 options
+        while len(options) < 4:
+            options.append(f"Option {len(options)+1}")
             
-            if hasattr(next_question, option_text_attr) and getattr(next_question, option_text_attr):
-                options.append(getattr(next_question, option_text_attr))
-            elif hasattr(next_question, option_attr) and getattr(next_question, option_attr):
-                options.append(getattr(next_question, option_attr))
-            else:
-                options.append("")
+        # Log the options that will be sent to client
+        option_summary = ", ".join(options[:2]) + "..." if options else "No options found"
+        logger.info(f"Sending question {next_question.question_id} with options: {option_summary}")
         
         # Format question response
         question_response = {
