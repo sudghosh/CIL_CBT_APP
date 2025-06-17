@@ -30,8 +30,7 @@ import {
   CheckCircle as ActiveIcon,
   Cancel as InactiveIcon,
 } from '@mui/icons-material';
-import { papersAPI } from '../services/api';
-import { sectionsAPI, subsectionsAPI } from '../services/api';
+import { papersAPI, sectionsAPI, subsectionsAPI } from '../services/api';
 import { Loading } from '../components/Loading';
 import Pagination from '@mui/material/Pagination';
 
@@ -87,18 +86,28 @@ export const PaperManagement: React.FC = () => {
 
   useEffect(() => {
     fetchPapers(page);
-  }, [page]);
-
-  const fetchPapers = async (pageNum = 1) => {
+  }, [page]);  const fetchPapers = async (pageNum = 1) => {
     try {
       setLoading(true);
       const response = await papersAPI.getPapers({ page: pageNum, page_size: pageSize });
-      if (response.data.items) {
-        setPapers(response.data.items);
-        setTotal(response.data.total);
+      
+      if (response && response.data) {
+        // Type assertion for response.data to handle different formats
+        const responseData = response.data as any;
+        
+        if (responseData.items && Array.isArray(responseData.items)) {
+          setPapers(responseData.items as ExamPaper[]);
+          setTotal(responseData.total ? Number(responseData.total) : responseData.items.length);
+        } else if (Array.isArray(responseData)) {
+          setPapers(responseData as ExamPaper[]);
+          setTotal(responseData.length);
+        } else {
+          setPapers([]);
+          setTotal(0);
+        }
       } else {
-        setPapers(response.data);
-        setTotal(response.data.length);
+        setPapers([]);
+        setTotal(0);
       }
       setError(null);
     } catch (err: any) {

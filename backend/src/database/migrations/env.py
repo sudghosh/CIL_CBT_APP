@@ -49,6 +49,9 @@ from src.database.models import (
     QuestionOption,
     TestAttempt,
     TestAnswer,
+    UserPerformanceProfile,
+    UserOverallSummary,
+    UserTopicSummary,
 )
 
 # All your SQLAlchemy models' metadata are collected here for Alembic to inspect

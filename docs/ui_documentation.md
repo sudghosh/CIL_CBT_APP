@@ -27,22 +27,17 @@ The Question Management page allows administrators to view, search, add, edit, a
 - Pagination controls at the bottom of the list
 
 #### Question Management Actions
-- **Add Question**: Button located in the top-right corner; opens a dialog to create a new question
+- **Add Question**: Opens a dialog to create a new question
 - **Edit Question**: Accessed via the edit icon in the question row
 - **Delete Question**: Accessed via the delete icon in the question row
-- **Upload CSV/Excel**: Button located in the action section under the search filters for bulk question import
+- **Upload CSV**: Available in the search filters section for bulk question import
 
 ### UI Changelog
 
-#### June 13, 2025 (Latest Update)
-- Removed the second "+ Add Question" button from the action buttons section
-- Kept only a single "+ Add Question" button in the top-right corner alongside the title
-- Ensured streamlined UI with clear button placement and no redundancy
-
-#### June 13, 2025 (Initial Update)
+#### June 13, 2025
 - Moved "Question Management" title to the top of the page for better visibility
 - Moved "Add Question" button to the top-right corner alongside the title
-- Removed redundant "Question Management" section from the bottom of the page
+- Removed redundant "Question Management" section and second "Add Question" button from the bottom of the page
 - Streamlined the UI by removing duplicate table and keeping only the search functionality
 
 ### Best Practices for Using the Interface

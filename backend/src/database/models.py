@@ -11,7 +11,7 @@
 #    - Apply migration: `alembic upgrade head`
 # -------------------------------------
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float, Date
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Numeric, Float, Date, UniqueConstraint
 from datetime import date
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
@@ -34,6 +34,8 @@ class User(Base):
     created_papers = relationship("Paper", back_populates="created_by")
     created_questions = relationship("Question", back_populates="created_by")
     test_attempts = relationship("TestAttempt", back_populates="user")
+    overall_summary = relationship("UserOverallSummary", back_populates="user", uselist=False)
+    topic_summaries = relationship("UserTopicSummary", back_populates="user")
 
 class AllowedEmail(Base):
     __tablename__ = "allowed_emails"
@@ -97,6 +99,7 @@ class Question(Base):
     section_id = Column(Integer, ForeignKey("sections.section_id"), nullable=False, index=True)
     subsection_id = Column(Integer, ForeignKey("subsections.subsection_id"))
     default_difficulty_level = Column(String, default='Easy')
+    difficulty_level = Column(String, nullable=False, default="Medium")  # e.g., 'Easy', 'Medium', 'Hard'
     community_difficulty_score = Column(Float, default=0.0)
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -194,6 +197,13 @@ class TestAttempt(Base):
     status = Column(String, nullable=False)
     score = Column(Float)
     weighted_score = Column(Float)
+    # Add missing fields to match the Pydantic response model
+    test_type = Column(String)  # Added field to match response model
+    total_allotted_duration_minutes = Column(Integer)  # Added field to match response model
+    # New columns for adaptive test strategy
+    adaptive_strategy_chosen = Column(String, nullable=True)  # Stores 'hard_to_easy' or 'easy_to_hard' if adaptive
+    current_question_index = Column(Integer, default=0, nullable=False)  # Tracks progress within an adaptive test
+    max_questions = Column(Integer, nullable=True)  # Maximum number of questions for adaptive tests
 
     # Enhanced relationships with cascading deletes
     test_template = relationship("TestTemplate", back_populates="attempts")
@@ -241,3 +251,70 @@ class TestAnswer(Base):
         if value > 3600:  # Max 1 hour per question
             raise ValueError("Time taken cannot exceed 1 hour per question")
         return value
+
+class UserPerformanceProfile(Base):
+    __tablename__ = "user_performance_profiles"
+
+    profile_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.paper_id"), nullable=True)
+    section_id = Column(Integer, ForeignKey("sections.section_id"), nullable=True)
+    subsection_id = Column(Integer, ForeignKey("subsections.subsection_id"), nullable=True)
+
+    correct_easy_count = Column(Integer, default=0, nullable=False)
+    incorrect_easy_count = Column(Integer, default=0, nullable=False)
+    correct_medium_count = Column(Integer, default=0, nullable=False)
+    incorrect_medium_count = Column(Integer, default=0, nullable=False)
+    correct_hard_count = Column(Integer, default=0, nullable=False)
+    incorrect_hard_count = Column(Integer, default=0, nullable=False)
+
+    total_questions_attempted = Column(Integer, default=0, nullable=False)
+    total_time_spent_seconds = Column(Integer, default=0, nullable=False)
+
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'paper_id', 'section_id', 'subsection_id', name='_user_topic_uc'),
+    )
+
+    user = relationship("User")
+    paper = relationship("Paper")
+    section = relationship("Section")
+    subsection = relationship("Subsection")
+
+class UserOverallSummary(Base):
+    __tablename__ = "user_overall_summaries"
+    
+    user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
+    total_tests_completed = Column(Integer, default=0)
+    total_questions_answered = Column(Integer, default=0)
+    overall_accuracy_percentage = Column(Float, default=0.0)
+    avg_score_completed_tests = Column(Float, default=0.0)
+    avg_time_per_question_overall = Column(Float, default=0.0)
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    user = relationship("User", back_populates="overall_summary")
+
+class UserTopicSummary(Base):
+    __tablename__ = "user_topic_summaries"
+    
+    summary_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.paper_id"), nullable=True)
+    section_id = Column(Integer, ForeignKey("sections.section_id"), nullable=True)
+    subsection_id = Column(Integer, ForeignKey("subsections.subsection_id"), nullable=True)
+    total_questions_answered_in_topic = Column(Integer, default=0)
+    accuracy_easy_topic = Column(Float, default=0.0)
+    accuracy_medium_topic = Column(Float, default=0.0)
+    accuracy_hard_topic = Column(Float, default=0.0)
+    avg_time_per_question_topic = Column(Float, default=0.0)
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'paper_id', 'section_id', 'subsection_id', name='_user_topic_summary_uc'),
+    )
+    
+    user = relationship("User", back_populates="topic_summaries")
+    paper = relationship("Paper")
+    section = relationship("Section")
+    subsection = relationship("Subsection")

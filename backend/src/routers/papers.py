@@ -143,7 +143,7 @@ async def create_paper(
     current_user: User = Depends(verify_admin)
 ):
     try:
-        logger.info(f"Creating paper with data: {paper}")
+        logger.info(f"Creating paper with data: {paper}, requested by user: {current_user.email}")
         if not paper.paper_name or not paper.paper_name.strip():
             logger.error("Paper name is missing or empty")
             raise HTTPException(
@@ -215,32 +215,88 @@ async def create_paper(
         )
 
 @router.put("/{paper_id}/activate")
+@router.post("/{paper_id}/activate/")  # Added POST endpoint with trailing slash to match frontend
+@limiter.limit("10/minute")
 async def activate_paper(
+    request: Request,
     paper_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_admin)
 ):
-    paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
-    if not paper:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    
-    paper.is_active = True
-    db.commit()
-    return {"status": "success"}
+    try:
+        logger.info(f"Activating paper {paper_id}, requested by user: {current_user.email}")
+        paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if not paper:
+            logger.error(f"Paper with ID {paper_id} not found in activate_paper")
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        paper.is_active = True
+        db.commit()
+        logger.info(f"Paper {paper_id} activated successfully")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error activating paper {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error activating paper"
+        )
+
+@router.options("/{paper_id}/activate", include_in_schema=False)
+@router.options("/{paper_id}/activate/", include_in_schema=False)
+async def options_paper_activate():
+    """Handle OPTIONS requests for paper activation endpoint"""
+    return {
+        "Allow": "PUT, POST, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "PUT, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
 
 @router.put("/{paper_id}/deactivate")
+@router.post("/{paper_id}/deactivate/")  # Added POST endpoint with trailing slash to match frontend
+@limiter.limit("10/minute")
 async def deactivate_paper(
+    request: Request,
     paper_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_admin)
 ):
-    paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
-    if not paper:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    
-    paper.is_active = False
-    db.commit()
-    return {"status": "success"}
+    try:
+        logger.info(f"Deactivating paper {paper_id}, requested by user: {current_user.email}")
+        paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if not paper:
+            logger.error(f"Paper with ID {paper_id} not found in deactivate_paper")
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        paper.is_active = False
+        db.commit()
+        logger.info(f"Paper {paper_id} deactivated successfully")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deactivating paper {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deactivating paper"
+        )
+
+@router.options("/{paper_id}/deactivate", include_in_schema=False)
+@router.options("/{paper_id}/deactivate/", include_in_schema=False)
+async def options_paper_deactivate():
+    """Handle OPTIONS requests for paper deactivation endpoint"""
+    return {
+        "Allow": "PUT, POST, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "PUT, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
 
 @router.get("/{paper_id}", response_model=PaperResponse)
 @limiter.limit("30/minute")
@@ -269,31 +325,50 @@ async def get_paper(
         )
 
 @router.put("/{paper_id}", response_model=PaperResponse)
+@router.put("/{paper_id}/", response_model=PaperResponse)  # Added endpoint with trailing slash
 @limiter.limit("10/minute")
 async def update_paper(
     request: Request,
     paper_id: int,
-    paper_update: PaperCreate,
+    paper: PaperCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_admin)
 ):
     try:
+        logger.info(f"Updating paper {paper_id}, data: {paper}, requested by user: {current_user.email}")
+        
+        # Check if paper exists
         db_paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
         if not db_paper:
+            logger.error(f"Paper with ID {paper_id} not found for update")
             raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
         
-        db_paper.paper_name = paper_update.paper_name
-        db_paper.total_marks = paper_update.total_marks
-        db_paper.description = paper_update.description
+        # Update basic paper details
+        db_paper.paper_name = paper.paper_name
+        db_paper.total_marks = paper.total_marks
+        db_paper.description = paper.description
         
-        db.commit()
-        db.refresh(db_paper)
-        
-        updated_paper = db.query(Paper).options(
-            joinedload(Paper.sections).joinedload(Section.subsections)
-        ).filter(Paper.paper_id == paper_id).first()
-        
-        return serialize_paper(updated_paper)
+        try:
+            db.commit()
+            logger.info(f"Paper {paper_id} updated successfully")
+            
+            # Return updated paper with its sections and subsections
+            updated_paper = db.query(Paper).options(
+                joinedload(Paper.sections).joinedload(Section.subsections)
+            ).filter(Paper.paper_id == paper_id).first()
+            return serialize_paper(updated_paper)
+        except IntegrityError as e:
+            db.rollback()
+            logger.error(f"IntegrityError updating paper {paper_id}: {str(e)}")
+            if "papers_paper_name_key" in str(e):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Paper name already exists. Please use a unique name."
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Database integrity error: {str(e)}"
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -301,10 +376,11 @@ async def update_paper(
         logger.error(f"Error updating paper {paper_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error updating paper"
+            detail=f"Error updating paper: {str(e)}"
         )
 
 @router.delete("/{paper_id}")
+@router.delete("/{paper_id}/")  # Add version with trailing slash
 @limiter.limit("10/minute")
 async def delete_paper(
     request: Request,
@@ -313,9 +389,12 @@ async def delete_paper(
     current_user: User = Depends(verify_admin)
 ):
     try:
+        logger.info(f"Deleting paper {paper_id}, requested by user: {current_user.email}")
+        
         # Check if paper exists
         db_paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
         if not db_paper:
+            logger.error(f"Paper with ID {paper_id} not found for deletion")
             raise HTTPException(status_code=404, detail=f"Paper with ID {paper_id} not found")
         
         # Log the deletion operation
@@ -370,12 +449,13 @@ async def delete_paper(
         )
 
 @router.options("/{paper_id}", include_in_schema=False)
+@router.options("/{paper_id}/", include_in_schema=False)
 async def options_paper_by_id():
-    """Handle OPTIONS requests for specific paper endpoints"""
+    """Handle OPTIONS requests for paper update endpoint"""
     return {
-        "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
-        "Access-Control-Allow-Origin": "*", 
-        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Allow": "GET, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
     }

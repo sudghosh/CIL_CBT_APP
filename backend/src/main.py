@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, APIRouter
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +12,7 @@ import logging
 import os
 import traceback
 from datetime import datetime
-from .routers import auth, questions, tests, papers, admin
+from .routers import auth, questions, tests, papers, admin, start_route
 from .database.database import engine
 from .database.models import Base
 from .database.seed_data import seed_database
@@ -153,12 +153,24 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(auth.router)
 app.include_router(questions.router)
 app.include_router(tests.router)
-app.include_router(papers.router)
 app.include_router(admin.router)
+app.include_router(start_route.router)  # Include the new start route for test starting
 # Add new routers for section and subsection management
 from .routers import sections, subsections
+
+# Create API prefix router to handle frontend requests to /api/*
+api_router = APIRouter(prefix="/api")
+api_router.include_router(papers.router)  # Include papers router under /api/papers
+api_router.include_router(sections.router)  # Include sections router under /api/sections
+api_router.include_router(subsections.router)  # Include subsections router under /api/subsections
+app.include_router(api_router)  # Include the api router in main app
+
+# Include the sections and subsections routers directly for backward compatibility
 app.include_router(sections.router)
 app.include_router(subsections.router)
+
+# Remove the direct inclusion of papers router since it's already included under /api
+# app.include_router(papers.router)  # This was causing the duplication issue
 
 @app.get("/health")
 @limiter.limit("60/minute")  # Further increased rate limit for health check endpoint
@@ -172,3 +184,56 @@ async def health_check(request: Request):
         request.state.view_rate_limit = False
     
     return response
+
+# Add OPTIONS handlers for the /api/papers routes to handle CORS preflight requests
+@app.options("/api/papers/", include_in_schema=False)
+async def options_api_papers():
+    return {
+        "Allow": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PATCH, PUT, DELETE",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@app.options("/api/papers/{paper_id}", include_in_schema=False)
+@app.options("/api/papers/{paper_id}/", include_in_schema=False)
+async def options_api_paper_by_id(paper_id: int):
+    return {
+        "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@app.options("/api/papers/{paper_id}/activate/", include_in_schema=False)
+async def options_api_paper_activate(paper_id: int):
+    return {
+        "Allow": "POST, PUT, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@app.options("/api/papers/{paper_id}/deactivate/", include_in_schema=False)
+async def options_api_paper_deactivate(paper_id: int):
+    return {
+        "Allow": "POST, PUT, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+# Add OPTIONS handlers for the /api/sections routes to handle CORS preflight requests
+@app.options("/api/sections/{section_id}/subsections/", include_in_schema=False)
+async def options_api_sections_subsections():
+    return {
+        "Allow": "GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }

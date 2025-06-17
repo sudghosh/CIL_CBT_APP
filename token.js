@@ -1,0 +1,2 @@
+// This file contains a token for testing purposes
+const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsInJvbGUiOiJBZG1pbiIsImV4cCI6MTcxODQ3MjQwMH0.tVR4WnhxDKQ-OSS_iAlcX8NHVdxr8Mf9MWwts82BxpE';

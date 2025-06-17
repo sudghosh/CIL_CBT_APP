@@ -13,7 +13,7 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # Extended to 8 hours from 30 minutes
 
 oauth2_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl="https://accounts.google.com/o/oauth2/v2/auth",
@@ -25,7 +25,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -49,12 +49,21 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Log the token validation attempt (just the fact, not the token itself)
+    # Log the token validation attempt
     print(f"Token verification started at {datetime.utcnow()}")
     
     try:
+        # Handle possible token format issues
+        if not token or token.count('.') != 2:
+            print("Invalid token format - not enough segments")
+            raise credentials_exception
+            
         # Decode and validate the token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except JWTError as e:
+            print(f"JWT error during token verification: {str(e)}")
+            raise credentials_exception
         
         # Extract claims from payload
         email: str = payload.get("sub")

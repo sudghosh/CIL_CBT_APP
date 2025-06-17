@@ -11,7 +11,10 @@ from .models import (
     TestTemplate,
     TestTemplateSection,
     TestAttempt,
-    TestAnswer
+    TestAnswer,
+    UserPerformanceProfile,
+    UserOverallSummary,
+    UserTopicSummary
 )
 
 __all__ = [
@@ -31,5 +34,8 @@ __all__ = [
     'TestTemplate',
     'TestTemplateSection',
     'TestAttempt',
-    'TestAnswer'
+    'TestAnswer',
+    'UserPerformanceProfile',
+    'UserOverallSummary',
+    'UserTopicSummary'
 ]

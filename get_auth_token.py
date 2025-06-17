@@ -6,30 +6,28 @@ import json
 from pathlib import Path
 import sys
 
-def get_token(email="admin@example.com", password="admin"):
-    """Get a valid authentication token using direct login credentials."""
+def get_token():
+    """Get a valid authentication token using development login endpoint."""
     BASE_URL = "http://localhost:8000"
     
     try:
-        # For this test, we'll use a direct login endpoint if available
-        # Note: This depends on your actual authentication implementation
-        login_data = {
-            "username": email,
-            "password": password
-        }
-        
-        print(f"Attempting to authenticate with {email}...")
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
+        # Use the development login endpoint specifically designed for testing
+        print("Attempting to authenticate using dev login...")
+        response = requests.post(f"{BASE_URL}/auth/dev-login")
         
         if response.status_code == 200:
             token_data = response.json()
             print("Authentication successful!")
             
-            # Save the token to a file for reuse
+            # Save the token for reuse
             with open("auth_token.json", "w") as f:
                 json.dump(token_data, f)
+                
+            # Also create a token.js file for the frontend tests
+            with open("frontend/token.js", "w") as f:
+                f.write(f"const TOKEN = '{token_data['access_token']}';\n")
             
-            print(f"Token saved to auth_token.json")
+            print(f"Token saved to auth_token.json and frontend/token.js")
             return token_data
         else:
             print(f"Authentication failed: {response.status_code}")
@@ -44,7 +42,4 @@ def get_token(email="admin@example.com", password="admin"):
         return None
 
 if __name__ == "__main__":
-    email = sys.argv[1] if len(sys.argv) > 1 else "admin@example.com"
-    password = sys.argv[2] if len(sys.argv) > 2 else "admin"
-    
-    get_token(email, password)
+    get_token()

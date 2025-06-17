@@ -25,7 +25,23 @@ alembic upgrade head
 
 ## Common Issues and Solutions
 
-### 1. Issue: "Cannot delete paper with existing sections. Delete sections first."
+### 1. Issue: "Network connection error" when starting Practice Test
+
+**Fixed in June 2025 update**
+This issue was caused by missing fields in the TestAttempt model compared to the FastAPI response model:
+1. Added `test_type` and `total_allotted_duration_minutes` fields to the TestAttempt model
+2. Created a migration script to add these fields to the database
+3. Updated the start_test function to populate these fields
+
+To apply this fix, run:
+```bash
+docker cp backend/add_test_attempt_fields.py cil_cbt_app-backend-1:/app/
+docker exec -it cil_cbt_app-backend-1 python /app/add_test_attempt_fields.py
+```
+
+See documentation in `backend/docs/practice_test_start_fix.md` for more details.
+
+### 2. Issue: "Cannot delete paper with existing sections. Delete sections first."
 
 **Fixed in June 2025 update**
 This error occurred because the Paper deletion endpoint was explicitly checking for and preventing deletion of papers with existing sections, instead of cascading the deletion. The code has been updated to:

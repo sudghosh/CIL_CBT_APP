@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Frontend API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .warning {
+            color: #856404;
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .error {
+            color: #721c24;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Frontend API Test</h1>
+    <div class="warning">
+        This page tests the frontend API connection to the backend with authentication.
+        Open the browser console to see detailed logs.
+    </div>
+
+    <div>
+        <h3>Authentication</h3>
+        <button id="checkTokenBtn">Check Current Token</button>
+        <button id="loadTokenBtn">Load Token from File</button>
+        <button id="clearTokenBtn">Clear Token</button>
+        <div id="tokenStatus"></div>
+    </div>
+
+    <div>
+        <h3>API Tests</h3>
+        <button id="testPapersBtn">Test Papers API</button>
+        <button id="testHealthBtn">Test Health API</button>
+        <button id="testMeBtn">Test Auth/Me API</button>
+    </div>
+
+    <h3>Results:</h3>
+    <pre id="results">No results yet</pre>
+
+    <script>
+        // Load the token from the token.js file
+        async function loadToken() {
+            try {
+                const response = await fetch('token.js');
+                if (response.ok) {
+                    const text = await response.text();
+                    // Extract token from the file content
+                    const tokenMatch = text.match(/TOKEN\s*=\s*['"](.+)['"]/);
+                    if (tokenMatch && tokenMatch[1]) {
+                        const token = tokenMatch[1];
+                        localStorage.setItem('token', token);
+                        updateTokenStatus(`Token loaded and stored in localStorage`);
+                        return token;
+                    } else {
+                        showError('Could not extract token from file');
+                    }
+                } else {
+                    showError(`Failed to load token.js: ${response.status}`);
+                }
+            } catch (error) {
+                showError(`Error loading token: ${error.message}`);
+            }
+            return null;
+        }
+
+        // Update the token status display
+        function updateTokenStatus(message) {
+            const token = localStorage.getItem('token');
+            let statusHTML = message ? `<p>${message}</p>` : '';
+            
+            if (token) {
+                const shortToken = token.substring(0, 20) + '...' + token.substring(token.length - 10);
+                statusHTML += `<p class="success">Token found: ${shortToken}</p>`;
+            } else {
+                statusHTML += `<p class="warning">No token found in localStorage</p>`;
+            }
+            
+            document.getElementById('tokenStatus').innerHTML = statusHTML;
+        }
+
+        // Show an error message
+        function showError(message) {
+            const errorHTML = `<div class="error">${message}</div>`;
+            document.getElementById('results').innerHTML = errorHTML + document.getElementById('results').innerHTML;
+            console.error(message);
+        }
+
+        // Display results
+        function showResults(title, data) {
+            const resultHTML = `
+                <h4>${title}</h4>
+                <div class="success">Success!</div>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            document.getElementById('results').innerHTML = resultHTML;
+        }
+
+        // Test the papers API
+        async function testPapersAPI() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showError('No token found. Please load token first.');
+                return;
+            }
+            
+            try {
+                document.getElementById('results').innerHTML = 'Testing papers API...';
+                const response = await fetch('http://localhost:8000/api/papers/', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResults('Papers API Test', data);
+                } else {
+                    const errorData = await response.text();
+                    showError(`Papers API Error (${response.status}): ${errorData}`);
+                }
+            } catch (error) {
+                showError(`API Error: ${error.message}`);
+            }
+        }
+
+        // Test the health API
+        async function testHealthAPI() {
+            try {
+                document.getElementById('results').innerHTML = 'Testing health API...';
+                const response = await fetch('http://localhost:8000/health');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResults('Health API Test', data);
+                } else {
+                    const errorData = await response.text();
+                    showError(`Health API Error (${response.status}): ${errorData}`);
+                }
+            } catch (error) {
+                showError(`API Error: ${error.message}`);
+            }
+        }
+
+        // Test the auth/me API
+        async function testMeAPI() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showError('No token found. Please load token first.');
+                return;
+            }
+            
+            try {
+                document.getElementById('results').innerHTML = 'Testing auth/me API...';
+                const response = await fetch('http://localhost:8000/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResults('Auth/Me API Test', data);
+                } else {
+                    const errorData = await response.text();
+                    showError(`Auth/Me API Error (${response.status}): ${errorData}`);
+                }
+            } catch (error) {
+                showError(`API Error: ${error.message}`);
+            }
+        }
+
+        // Set up event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update token status on page load
+            updateTokenStatus();
+            
+            // Button event listeners
+            document.getElementById('checkTokenBtn').addEventListener('click', () => {
+                updateTokenStatus();
+            });
+            
+            document.getElementById('loadTokenBtn').addEventListener('click', async () => {
+                await loadToken();
+            });
+            
+            document.getElementById('clearTokenBtn').addEventListener('click', () => {
+                localStorage.removeItem('token');
+                updateTokenStatus('Token cleared from localStorage');
+            });
+            
+            document.getElementById('testPapersBtn').addEventListener('click', testPapersAPI);
+            document.getElementById('testHealthBtn').addEventListener('click', testHealthAPI);
+            document.getElementById('testMeBtn').addEventListener('click', testMeAPI);
+        });
+    </script>
+</body>
+</html>

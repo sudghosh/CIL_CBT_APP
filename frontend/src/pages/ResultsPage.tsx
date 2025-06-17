@@ -119,12 +119,11 @@ export const ResultsPage: React.FC = () => {
                 <TableCell>{result.test_type}</TableCell>
                 <TableCell>
                   {new Date(result.start_time).toLocaleDateString()}
+                </TableCell>                <TableCell>
+                  {result.duration_minutes || 0} / {result.total_allotted_duration_minutes || 0} minutes
                 </TableCell>
-                <TableCell>
-                  {result.duration_minutes} / {result.total_allotted_duration_minutes} minutes
-                </TableCell>
-                <TableCell>{result.score.toFixed(2)}%</TableCell>
-                <TableCell>{result.weighted_score.toFixed(2)}%</TableCell>
+                <TableCell>{result.score !== null && result.score !== undefined ? result.score.toFixed(2) : '0.00'}%</TableCell>
+                <TableCell>{result.weighted_score !== null && result.weighted_score !== undefined ? result.weighted_score.toFixed(2) : '0.00'}%</TableCell>
                 <TableCell>
                   <Button
                     variant="outlined"
@@ -162,11 +161,45 @@ export const ResultsPage: React.FC = () => {
         fullWidth
       >
         <DialogTitle>Test Details</DialogTitle>
-        <DialogContent>
-          {selectedTest && (
+        <DialogContent>          {selectedTest && (
             <Box>
+              {/* Summary statistics */}
+              <Paper sx={{ p: 3, mb: 4, backgroundColor: '#f5f5f5' }}>
+                <Typography variant="h6" gutterBottom>Test Summary</Typography>
+                
+                {/* Calculate correct/incorrect counts */}
+                {(() => {
+                  const total = selectedTest.questions.length;
+                  const correct = selectedTest.questions.filter(q => q.is_correct).length;
+                  const incorrect = total - correct;
+                  const correctPercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+                  
+                  return (
+                    <Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography>Total Questions:</Typography>
+                        <Typography fontWeight="bold">{total}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography color="success.main">Correct Answers:</Typography>
+                        <Typography fontWeight="bold" color="success.main">{correct}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography color="error.main">Incorrect Answers:</Typography>
+                        <Typography fontWeight="bold" color="error.main">{incorrect}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography>Score:</Typography>
+                        <Typography fontWeight="bold">{correctPercent}%</Typography>
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Paper>
+              
+              {/* Questions with answers */}
               {selectedTest.questions.map((q, index) => (
-                <Paper key={q.question_id} sx={{ p: 2, mb: 2 }}>
+                <Paper key={q.question_id} sx={{ p: 2, mb: 2, borderLeft: q.is_correct ? '4px solid #4caf50' : '4px solid #f44336' }}>
                   <Typography variant="subtitle1" gutterBottom>
                     Question {index + 1}
                   </Typography>
@@ -174,33 +207,67 @@ export const ResultsPage: React.FC = () => {
                     {q.question_text}
                   </Typography>
                   
-                  {q.options.map((option) => (
-                    <Typography
-                      key={option.option_id}
-                      variant="body2"
+                  {q.options.map((option, optIndex) => (
+                    <Box 
+                      key={option.option_id || optIndex}
                       sx={{
-                        color:
+                        p: 1,
+                        my: 0.5,
+                        borderRadius: 1,
+                        backgroundColor: 
+                          q.correct_option_index === option.option_order
+                            ? 'rgba(76, 175, 80, 0.1)'
+                            : q.selected_option_index === option.option_order && !q.is_correct
+                            ? 'rgba(244, 67, 54, 0.1)'
+                            : 'transparent',
+                        border: '1px solid',
+                        borderColor:
                           q.correct_option_index === option.option_order
                             ? 'success.main'
-                            : q.selected_option_index === option.option_order
+                            : q.selected_option_index === option.option_order && !q.is_correct
                             ? 'error.main'
-                            : 'text.primary',
+                            : 'transparent',
                       }}
                     >
-                      {String.fromCharCode(65 + option.option_order)}. {option.option_text}
-                    </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          color:
+                            q.correct_option_index === option.option_order
+                              ? 'success.main'
+                              : q.selected_option_index === option.option_order && !q.is_correct
+                              ? 'error.main'
+                              : 'text.primary',
+                          fontWeight:
+                            q.selected_option_index === option.option_order ||
+                            q.correct_option_index === option.option_order
+                              ? 'bold'
+                              : 'normal',
+                        }}
+                      >
+                        {String.fromCharCode(65 + option.option_order)}. {option.option_text}
+                        {q.selected_option_index === option.option_order && (
+                          <span style={{ marginLeft: '8px' }}>
+                            (Your answer)
+                          </span>
+                        )}
+                      </Typography>
+                    </Box>
                   ))}
 
-                  <Box sx={{ mt: 1 }}>
+                  <Box sx={{ mt: 2, p: 1, backgroundColor: q.is_correct ? 'rgba(76, 175, 80, 0.05)' : 'rgba(244, 67, 54, 0.05)' }}>
                     <Typography
                       variant="body2"
+                      fontWeight="bold"
                       color={q.is_correct ? 'success.main' : 'error.main'}
                     >
-                      {q.is_correct ? 'Correct' : 'Incorrect'}
+                      {q.is_correct ? '✓ Correct' : '✗ Incorrect'}
                     </Typography>
                     {!q.is_correct && (
-                      <Typography variant="body2" color="text.secondary">
-                        Explanation: {q.explanation}
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        <b>Explanation:</b> {q.explanation || "No explanation available."}
                       </Typography>
                     )}
                   </Box>

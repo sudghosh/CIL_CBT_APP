@@ -1,0 +1,4 @@
+2025-06-14 17:45:03,138 - INFO - No saved token file found, will try to authenticate
+2025-06-14 17:45:03,138 - INFO - Attempting to authenticate...
+2025-06-14 17:45:03,172 - ERROR - Authentication failed: 404 - {"detail":"Not Found"}
+2025-06-14 17:45:03,173 - ERROR - No token available, cannot proceed with tests
