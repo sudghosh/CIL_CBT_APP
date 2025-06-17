@@ -3,6 +3,7 @@ from .database import get_db
 from .models import Paper, Section, Subsection, Question, QuestionOption
 from typing import List
 from datetime import date
+import random  # Add import for random module
 
 def create_sample_paper(db: Session) -> Paper:
     # Create main paper
@@ -71,6 +72,9 @@ def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
     # Get all sections
     sections = db.query(Section).filter(Section.paper_id == paper_id).all()
     questions = []
+    
+    # Define difficulty levels for random choice
+    difficulty_levels = ['Easy', 'Medium', 'Hard']
 
     for section in sections:
         # Get subsections for this section
@@ -79,6 +83,9 @@ def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
         # Create 5 questions per subsection
         for subsection in subsections:
             for i in range(5):
+                # Randomly choose difficulty level
+                chosen_difficulty = random.choice(difficulty_levels)
+                
                 question = Question(
                     question_text=f"Sample question {i+1} for {subsection.subsection_name}",
                     question_type="MCQ",
@@ -88,6 +95,7 @@ def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
                     section_id=section.section_id,
                     subsection_id=subsection.subsection_id,
                     default_difficulty_level="Easy",
+                    difficulty_level=chosen_difficulty,  # Use randomly chosen difficulty
                     valid_until=date(9999, 12, 31)
                 )
                 db.add(question)

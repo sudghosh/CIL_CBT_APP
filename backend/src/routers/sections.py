@@ -279,3 +279,49 @@ async def options_section_by_id():
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
     }
+
+@router.options("/{section_id}/subsections/", include_in_schema=False)
+async def options_section_subsections():
+    return {
+        "Allow": "GET, OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600"
+    }
+
+@router.get("/{section_id}/subsections/", response_model=List[dict])
+@limiter.limit("30/minute")
+async def get_section_subsections(
+    request: Request,
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Check if section exists
+        section = db.query(Section).filter(Section.section_id == section_id).first()
+        if not section:
+            raise HTTPException(status_code=404, detail=f"Section with ID {section_id} not found")
+        
+        # Get subsections for the section
+        subsections = db.query(Subsection).filter(Subsection.section_id == section_id).all()
+        
+        # Return serialized subsections
+        return [
+            {
+                "subsection_id": sub.subsection_id,
+                "subsection_name": sub.subsection_name,
+                "description": sub.description,
+                "section_id": sub.section_id
+            }
+            for sub in subsections
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving subsections for section {section_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving subsections for section {section_id}"
+        )

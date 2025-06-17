@@ -243,11 +243,34 @@ async def get_questions(
     logger.info(f"[QUESTIONS ENDPOINT] GET /questions called with page={page}, page_size={page_size}, paper_id={paper_id}, section_id={section_id}")
     start_time = time.time()
     try:
+        # Validate section_id existence
+        if section_id:
+            section_exists = db.query(Section).filter(Section.section_id == section_id).first()
+            if not section_exists:
+                logger.error(f"Invalid section_id={section_id}: No matching section found in the database.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Section with id={section_id} not found."
+                )
+            logger.info(f"Validated section_id={section_id} exists")
+
+        # Validate paper_id existence if provided
+        if paper_id:
+            paper_exists = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+            if not paper_exists:
+                logger.error(f"Invalid paper_id={paper_id}: No matching paper found in the database.")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Paper with id={paper_id} not found."
+                )
+            logger.info(f"Validated paper_id={paper_id} exists")
+
         query = db.query(Question).options(joinedload(Question.options))
         if paper_id:
             query = query.filter(Question.paper_id == paper_id)
         if section_id:
             query = query.filter(Question.section_id == section_id)
+
         # Only return valid questions
         query = query.filter(Question.valid_until >= date.today())
         total = query.count()
@@ -288,6 +311,8 @@ async def get_questions(
             "page": page,
             "page_size": page_size
         }
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         logger.error(f"Error fetching questions: {str(e)}\n{traceback.format_exc()}")
@@ -422,6 +447,8 @@ async def upload_questions(
                     paper_id=safe_convert(row['paper_id']),
                     section_id=safe_convert(row['section_id']),
                     default_difficulty_level=str(row['default_difficulty_level']),
+                    # Handle difficulty_level from CSV or use default_difficulty_level if not provided
+                    difficulty_level=str(row['difficulty_level']) if 'difficulty_level' in df.columns and not pd.isna(row['difficulty_level']) else str(row['default_difficulty_level']),
                     created_by_user_id=current_user.user_id
                 )                # Add optional fields if present
                 if 'subsection_id' in df.columns and not pd.isna(row['subsection_id']):
@@ -780,3 +807,122 @@ async def delete_question(
         logger.error(f"[DEBUG][DELETE] Error deleting question {question_id}: {e}\n{traceback.format_exc()}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get("/available-count")
+async def get_available_question_count(
+    paper_id: Optional[int] = None,
+    section_id: Optional[int] = None,
+    subsection_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """Get the count of available active questions for a given paper/section/subsection"""
+    logger.info(f"[AVAILABLE-COUNT] Request received: paper_id={paper_id}, section_id={section_id}, subsection_id={subsection_id}")
+    
+    # Validate paper_id is provided and valid
+    if paper_id is None:
+        logger.warning("[AVAILABLE-COUNT] Missing required parameter: paper_id")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="paper_id is required"
+        )
+        
+    try:
+        # Verify paper exists
+        paper = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if not paper:
+            logger.warning(f"[AVAILABLE-COUNT] Paper with ID {paper_id} not found")
+            return {"count": 0, "paper_id": paper_id, "section_id": section_id, "subsection_id": subsection_id}
+            
+        # If section_id is provided, verify it exists
+        if section_id is not None:
+            section = db.query(Section).filter(
+                Section.section_id == section_id,
+                Section.paper_id == paper_id
+            ).first()
+            if not section:
+                logger.warning(f"[AVAILABLE-COUNT] Section with ID {section_id} not found for paper {paper_id}")
+                return {"count": 0, "paper_id": paper_id, "section_id": section_id, "subsection_id": subsection_id}
+                
+        # If subsection_id is provided, verify it exists
+        if subsection_id is not None and section_id is not None:
+            subsection = db.query(Subsection).filter(
+                Subsection.subsection_id == subsection_id,
+                Subsection.section_id == section_id
+            ).first()
+            if not subsection:
+                logger.warning(f"[AVAILABLE-COUNT] Subsection with ID {subsection_id} not found for section {section_id}")
+                return {"count": 0, "paper_id": paper_id, "section_id": section_id, "subsection_id": subsection_id}
+        
+        # Build the query
+        query = db.query(func.count(Question.question_id)).filter(
+            Question.paper_id == paper_id,
+            Question.valid_until >= date.today()
+        )
+        
+        if section_id is not None:
+            query = query.filter(Question.section_id == section_id)
+            
+        if subsection_id is not None:
+            query = query.filter(Question.subsection_id == subsection_id)
+            
+        count = query.scalar() or 0
+        
+        logger.info(f"[AVAILABLE-COUNT] Found {count} questions for paper_id={paper_id}, section_id={section_id}, subsection_id={subsection_id}")
+        
+        return {
+            "count": count,
+            "paper_id": paper_id,
+            "section_id": section_id,
+            "subsection_id": subsection_id
+        }
+    except Exception as e:
+        logger.error(f"[AVAILABLE-COUNT] Error getting question count: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get available question count"
+        )
+
+@router.post("/activate/{paper_id}/{section_id}")
+async def activate_questions(
+    paper_id: int,
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    """
+    Activate all questions for a specific paper and section by setting their valid_until date to far in the future.
+    This is useful when questions exist but are not available for tests because they're considered inactive.
+    """
+    try:
+        # Find questions that need activation (valid_until < today)
+        today = date.today()
+        questions_to_activate = db.query(Question).filter(
+            Question.paper_id == paper_id,
+            Question.section_id == section_id,
+            Question.valid_until < today
+        ).all()
+        
+        if not questions_to_activate:
+            return {"message": f"No inactive questions found for paper_id={paper_id}, section_id={section_id}"}
+        
+        # Set valid_until to far future date (December 31, 9999)
+        far_future = date(9999, 12, 31)
+        
+        for question in questions_to_activate:
+            question.valid_until = far_future
+            db.add(question)
+        
+        db.commit()
+        
+        return {
+            "message": f"Successfully activated {len(questions_to_activate)} questions",
+            "activated_count": len(questions_to_activate)
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error activating questions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to activate questions: {str(e)}"
+        )

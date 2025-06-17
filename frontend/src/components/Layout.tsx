@@ -1,6 +1,17 @@
 import React from 'react';
 import { AppBar, Box, CssBaseline, Drawer, IconButton, List, ListItem, ListItemIcon, ListItemText, Toolbar, Typography, Tooltip } from '@mui/material';
-import { Menu as MenuIcon, Home, Description, Assignment, Person, ExitToApp, Brightness4, Brightness7 } from '@mui/icons-material';
+import { 
+  Menu as MenuIcon, 
+  Home, 
+  Description, 
+  Assignment, 
+  Person, 
+  ExitToApp, 
+  Brightness4, 
+  Brightness7,
+  Timeline,
+  Assessment,
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -23,6 +34,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Home', icon: <Home />, path: '/' },
     { text: 'Tests', icon: <Assignment />, path: '/practice-test' },
     { text: 'Results', icon: <Description />, path: '/results' },
+    { text: 'Performance Dashboard', icon: <Assessment />, path: '/performance-dashboard' },
     ...(isAdmin ? [
       { text: 'Question Bank', icon: <Description />, path: '/questions' },
       { text: 'Papers & Sections', icon: <Description />, path: '/papers' },

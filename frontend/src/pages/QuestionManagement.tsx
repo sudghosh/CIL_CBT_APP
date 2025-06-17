@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { axiosWithRetry } from '../utils/apiRetry';
 import {
   Box,
   Typography,
@@ -266,10 +267,10 @@ export const QuestionManagement: React.FC = () => {
         console.error('Error fetching questions:', questionsErr);
         setError('Failed to load questions data');
       }
-      
-      try {
+        try {
         const papersRes = await papersAPI.getPapers();
-        setPapers(papersRes.data.items ? papersRes.data.items : papersRes.data);
+        const responseData = papersRes.data as any;
+        setPapers(responseData && responseData.items ? responseData.items : (Array.isArray(responseData) ? responseData : []));
         console.log('Successfully loaded papers data');
       } catch (papersErr: any) {
         console.error('Error fetching papers:', papersErr);
@@ -291,15 +292,33 @@ export const QuestionManagement: React.FC = () => {
       fetchData(page);
     }
   }, [page]); // Depends on page state
-
+  
   // Fetch subsections when section changes
   useEffect(() => {
     if (formData.section_id) {
       (async () => {
         try {
-          const res = await import('../services/api').then(m => m.subsectionsAPI.getSubsections(formData.section_id));
-          setSubsections(res.data);
-        } catch {
+          const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+          
+          // Use axiosWithRetry instead of fetch to ensure token is included
+          console.log(`Fetching subsections for section ${formData.section_id}...`);
+          const response = await axiosWithRetry.get(
+            `${baseUrl}/api/sections/${formData.section_id}/subsections/`
+          );
+          
+          // Axios returns data directly in the response.data field
+          const data = response.data;
+          console.log(`Successfully fetched subsections:`, data);
+          
+          // Ensure data is an array
+          if (Array.isArray(data)) {
+            setSubsections(data);
+          } else {
+            console.error('Subsections data is not an array:', data);
+            setSubsections([]);
+          }
+        } catch (error) {
+          console.error('Error fetching subsections:', error);
           setSubsections([]);
         }
       })();
@@ -1261,11 +1280,10 @@ export const QuestionManagement: React.FC = () => {
               <InputLabel>Subsection</InputLabel>
               <Select
                 value={formData.subsection_id ?? ''}
-                onChange={e => setFormData({ ...formData, subsection_id: e.target.value === '' ? null : Number(e.target.value) })}
-                disabled={!formData.section_id || subsections.length === 0}
+                onChange={e => setFormData({ ...formData, subsection_id: e.target.value === '' ? null : Number(e.target.value) })}                disabled={!formData.section_id || !Array.isArray(subsections) || subsections.length === 0}
               >
                 <MenuItem value="">None</MenuItem>
-                {subsections.map((sub) => (
+                {Array.isArray(subsections) && subsections.map((sub) => (
                   <MenuItem key={sub.subsection_id} value={sub.subsection_id}>
                     {sub.subsection_name}
                   </MenuItem>

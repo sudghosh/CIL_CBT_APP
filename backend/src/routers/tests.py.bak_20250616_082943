@@ -1,0 +1,1470 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, text, desc
+from typing import List, Dict, Optional, Literal
+from pydantic import BaseModel, Field, validator
+from datetime import datetime, date
+import random
+import logging
+from sqlalchemy.exc import IntegrityError
+
+"""
+Tests Router - Practice Test Fix Documentation
+
+This file contains important fixes to the Practice Test feature to address issues with 
+template creation and test starting. The primary problems were:
+
+1. Mismatch between section_id from the frontend and section_id_ref in the database
+2. Inconsistent API formats (legacy direct fields vs modern sections array)
+3. Insufficient validation for section_id_ref values
+
+Key fixes implemented:
+
+1. Template Creation:
+   - Support both legacy and modern formats
+   - Add validation for section_id_ref to verify questions exist
+   - Improved error messages and logging
+
+2. Test Starting:
+   - Auto-correction of invalid section_id_ref
+   - Enhanced question selection logic
+   - Detailed error reporting
+   
+Important note: When creating a test template, section_id from the API is mapped to section_id_ref 
+in the database. When starting a test, the section_id_ref is used to find questions.
+
+A separate script (fix_template_section_refs.py) is available to fix existing templates.
+"""
+
+from ..database.database import get_db
+from ..database.models import ( 
+    TestTemplate, TestTemplateSection, TestAttempt, TestAnswer,
+    Question, QuestionOption, User, Paper, Section, Subsection,
+    UserPerformanceProfile, UserOverallSummary, UserTopicSummary
+)
+from ..auth.auth import verify_token, verify_admin
+from ..utils.error_handler import APIErrorHandler
+from ..validation.test_validators import ExamAttemptValidation as TestAttemptValidation, AnswerValidation
+from ..tasks.performance_aggregator import performance_aggregation_task
+
+# Configure logging - enable DEBUG level for detailed messages
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/tests", tags=["tests"])
+
+TestStatusEnum = Literal["InProgress", "Completed", "Abandoned"]
+TestTypeEnum = Literal["Mock", "Practice", "Regular", "Adaptive"]
+AdaptiveStrategyEnum = Literal["easy_to_hard", "hard_to_easy", "adaptive", "random"]
+
+class TestAnswerDetail(BaseModel):
+    question_id: int
+    question_text: str
+    options: List[str]
+    selected_option_index: Optional[int]
+    correct_option_index: Optional[int]
+    marks: Optional[float]
+    time_taken_seconds: int
+
+    class Config:
+        from_attributes = True
+
+class TestAnswerResponse(BaseModel):
+    attempt_id: int
+    test_type: TestTypeEnum
+    status: TestStatusEnum
+    start_time: datetime
+    end_time: Optional[datetime]
+    score: Optional[float]
+    weighted_score: Optional[float]
+    answers: List[TestAnswerDetail]
+
+    class Config:
+        from_attributes = True
+
+class TestTemplateSectionBase(BaseModel):
+    paper_id: int = Field(..., gt=0)
+    section_id: Optional[int] = Field(None, gt=0)
+    subsection_id: Optional[int] = Field(None, gt=0)
+    question_count: int = Field(..., gt=0, le=100)
+
+class TestTemplateBase(BaseModel):
+    template_name: str = Field(..., min_length=3, max_length=100)
+    test_type: TestTypeEnum
+    sections: List[TestTemplateSectionBase] = Field(default=[])
+
+class TestTemplateResponse(TestTemplateBase):
+    template_id: int
+    created_by_user_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TestAnswerSubmit(BaseModel):
+    question_id: int = Field(..., gt=0)
+    selected_option_index: Optional[int] = Field(None, ge=0, lt=4)
+    time_taken_seconds: int = Field(..., ge=0, le=3600)  # Max 1 hour per question
+    is_marked_for_review: bool = False
+
+    @validator('time_taken_seconds')
+    def validate_time_taken(cls, v):
+        if v < 0:
+            raise ValueError('Time taken cannot be negative')
+        if v > 3600:
+            raise ValueError('Time taken cannot exceed 1 hour per question')
+        return v
+
+class TestAttemptBase(BaseModel):
+    test_template_id: int = Field(..., gt=0)
+    duration_minutes: int = Field(..., gt=0, le=360)  # Max 6 hours
+    is_adaptive: bool = Field(False)  # New field to indicate adaptive test
+    adaptive_strategy: Optional[AdaptiveStrategyEnum] = Field(None)  # New field for adaptive strategy
+
+class TestAttemptResponse(BaseModel):
+    attempt_id: int
+    test_type: TestTypeEnum
+    start_time: datetime
+    end_time: Optional[datetime]
+    duration_minutes: Optional[int]
+    total_allotted_duration_minutes: int = Field(..., gt=0, le=360)  # Max 6 hours
+    status: TestStatusEnum
+    score: Optional[float] = Field(None, ge=0, le=100)
+    weighted_score: Optional[float] = Field(None, ge=0, le=100)
+
+    class Config:
+        from_attributes = True
+
+    @validator('score', 'weighted_score')
+    def validate_score(cls, v):
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError('Score must be between 0 and 100')
+        return v
+
+@router.post("/templates", response_model=TestTemplateResponse)
+async def create_test_template(
+    template: TestTemplateBase,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    try:
+        # Support both legacy format (direct paper_id, section_id) and new format (sections array)
+        # Check if we're receiving direct paper_id as a legacy format
+        if hasattr(template, 'paper_id') and getattr(template, 'paper_id', None):
+            # Convert legacy format to sections format
+            logger.info("Converting legacy format with direct paper_id to sections array format")
+            section_id = getattr(template, 'section_id', None)
+            subsection_id = getattr(template, 'subsection_id', None) 
+            question_count = getattr(template, 'question_count', 10)
+            
+            # Create a section object
+            section = TestTemplateSectionBase(
+                paper_id=template.paper_id,
+                section_id=section_id,
+                subsection_id=subsection_id,
+                question_count=question_count
+            )
+            
+            # Add it to the sections array
+            template.sections = [section]
+        
+        # Input validation - check that all sections have valid references
+        if not template.sections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="At least one section must be provided"
+            )
+          # Validate that all papers and sections exist
+        for i, section in enumerate(template.sections):
+            # Debug output
+            print(f"Processing section {i}: paper_id={section.paper_id}, section_id={getattr(section, 'section_id', None)}, question_count={section.question_count}")
+            
+            # Check paper exists
+            paper = db.query(Paper).filter(Paper.paper_id == section.paper_id).first()
+            if not paper:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Paper with ID {section.paper_id} not found"
+                )
+            
+            # If section_id is provided, check it exists and belongs to the paper
+            if section.section_id:
+                db_section = db.query(Section).filter(
+                    Section.section_id == section.section_id,
+                    Section.paper_id == section.paper_id
+                ).first()
+                
+                if not db_section:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Section with ID {section.section_id} not found in paper {section.paper_id}"
+                    )
+            
+            # If subsection_id is provided, check it exists and belongs to the section
+            if section.subsection_id:
+                if not section.section_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Section ID must be provided when specifying subsection ID"
+                    )
+                
+                db_subsection = db.query(Subsection).filter(
+                    Subsection.subsection_id == section.subsection_id,
+                    Subsection.section_id == section.section_id
+                ).first()
+                
+                if not db_subsection:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Subsection with ID {section.subsection_id} not found in section {section.section_id}"
+                    )
+            
+            # Check for duplicate sections
+            for j, other_section in enumerate(template.sections):
+                if i != j and section.paper_id == other_section.paper_id and section.section_id == other_section.section_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Duplicate section found: paper_id={section.paper_id}, section_id={section.section_id}"
+                    )        # Create template
+        db_template = TestTemplate(
+            template_name=template.template_name,
+            test_type=template.test_type,
+            created_by_user_id=current_user.user_id
+        )
+        db.add(db_template)
+        db.flush() # Use flush to get the template_id before committing        # Add sections
+        for section in template.sections:
+            section_id_value = getattr(section, 'section_id', None)
+            
+            # CRITICAL FIX: Double check that we're using the right section_id that matches questions in the database
+            # First verify if the provided section_id exists in the paper
+            db_section = None
+            if section_id_value:
+                db_section = db.query(Section).filter(
+                    Section.paper_id == section.paper_id,
+                    Section.section_id == section_id_value
+                ).first()
+                
+                if not db_section:
+                    logger.warning(f"Section with ID {section_id_value} not found in paper {section.paper_id}")
+                    section_id_value = None
+            
+            # Now check if questions exist for this paper-section combination
+            if section_id_value:
+                question_count = db.query(Question).filter(
+                    Question.paper_id == section.paper_id,
+                    Question.section_id == section_id_value,
+                    Question.valid_until >= date.today()  # Add this to check for valid questions only
+                ).count()
+                
+                logger.info(f"Found {question_count} VALID questions for paper_id={section.paper_id}, section_id={section_id_value}")
+                
+                # If no valid questions found with this section_id, try to find a valid one
+                if question_count == 0:
+                    logger.warning(f"No VALID questions found for paper_id={section.paper_id}, section_id={section_id_value}")
+                    
+                    # Find sections with valid questions for this paper
+                    valid_sections = db.query(Question.section_id, func.count(Question.question_id).label('count'))\
+                        .filter(
+                            Question.paper_id == section.paper_id,
+                            Question.valid_until >= date.today()  # Add this to check for valid questions only
+                        )\
+                        .group_by(Question.section_id)\
+                        .order_by(desc('count'))\
+                        .all()
+                    
+                    if valid_sections:
+                        old_section_id = section_id_value
+                        section_id_value = valid_sections[0][0]
+                        logger.info(f"Automatically corrected section_id from {old_section_id} to {section_id_value} which has {valid_sections[0][1]} valid questions")
+                    else:
+                        # Try again without the valid_until filter to see if there are any questions at all
+                        all_sections = db.query(Question.section_id, func.count(Question.question_id).label('count'))\
+                            .filter(Question.paper_id == section.paper_id)\
+                            .group_by(Question.section_id)\
+                            .order_by(desc('count'))\
+                            .all()
+                            
+                        if all_sections:
+                            old_section_id = section_id_value
+                            section_id_value = all_sections[0][0]
+                            logger.warning(f"Found section {section_id_value} with {all_sections[0][1]} questions, but they are all expired (valid_until < today)")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Paper ID {section.paper_id}, section ID {old_section_id} has questions, but they have all expired. Please contact an administrator to extend their validity."
+                            )
+                        else:
+                            logger.error(f"No sections with any questions found for paper_id={section.paper_id}")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"No questions found for paper ID {section.paper_id}. Please check the paper and section IDs."
+                            )
+            else:
+                logger.warning(f"No section_id provided for paper_id={section.paper_id}")
+                # Try to find a valid section_id with questions
+                valid_sections = db.query(Question.section_id, func.count(Question.question_id).label('count'))\
+                    .filter(
+                        Question.paper_id == section.paper_id,
+                        Question.valid_until >= date.today()  # Add this to check for valid questions only
+                    )\
+                    .group_by(Question.section_id)\
+                    .order_by(desc('count'))\
+                    .all()
+                
+                if valid_sections:
+                    section_id_value = valid_sections[0][0]
+                    logger.info(f"Using section_id={section_id_value} which has {valid_sections[0][1]} valid questions")
+                else:
+                    # Check if there are any questions at all without the valid_until filter
+                    all_sections = db.query(Question.section_id, func.count(Question.question_id).label('count'))\
+                        .filter(Question.paper_id == section.paper_id)\
+                        .group_by(Question.section_id)\
+                        .order_by(desc('count'))\
+                        .all()
+                        
+                    if all_sections:
+                        logger.warning(f"Paper ID {section.paper_id} has questions in section {all_sections[0][0]}, but they are all expired")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Paper ID {section.paper_id} has questions, but they have all expired. Please contact an administrator to extend their validity."
+                        )
+                    else:
+                        logger.error(f"No valid sections with questions found for paper_id={section.paper_id}")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"No questions found for paper ID {section.paper_id}. Please add questions first."
+                        )              # Create the db_section regardless of which path was taken above
+            try:
+                print(f"DEBUG: Creating TestTemplateSection with paper_id={section.paper_id}, section_id_value={section_id_value}")
+                logger.debug(f"Creating TestTemplateSection with paper_id={section.paper_id}, section_id_value={section_id_value}")
+                
+                # Double verify the section_id_ref is a valid ID that exists in the sections table
+                if section_id_value:
+                    section_exists = db.query(Section).filter(Section.section_id == section_id_value).first()
+                    if not section_exists:
+                        logger.error(f"Cannot use section_id_ref={section_id_value} because it doesn't exist in sections table")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST, 
+                            detail=f"Invalid section ID {section_id_value}"
+                        )
+                
+                db_section = TestTemplateSection(
+                    template_id=db_template.template_id,
+                    paper_id=section.paper_id,
+                    section_id_ref=section_id_value,  # Map section_id from API to section_id_ref in DB
+                    subsection_id=getattr(section, 'subsection_id', None),
+                    question_count=section.question_count
+                )
+                
+                # Verify one final time that there are questions available for this configuration
+                if section_id_value:
+                    available_questions = db.query(Question).filter(
+                        Question.paper_id == section.paper_id,
+                        Question.section_id == section_id_value,
+                        Question.valid_until >= date.today()
+                    ).count()
+                    
+                    logger.info(f"Verified section_id_ref={section_id_value} has {available_questions} valid questions")
+                    
+                    if available_questions < section.question_count:
+                        logger.warning(f"Section {section_id_value} has only {available_questions} questions, but {section.question_count} were requested")
+                        # We'll still create it, but log a warning
+                
+                print(f"DEBUG: TestTemplateSection object created: {db_section}")
+                logger.debug(f"TestTemplateSection object created: {db_section}")
+                
+                db.add(db_section)
+                print(f"DEBUG: Added TestTemplateSection to session")
+                logger.debug(f"Added TestTemplateSection to session")
+            except HTTPException:
+                raise  # Re-raise HTTP exceptions
+            except Exception as e:
+                print(f"ERROR creating TestTemplateSection: {e}")
+                logger.error(f"Error creating TestTemplateSection: {e}")
+                raise
+        
+        db.commit()
+        db.refresh(db_template)
+        return db_template
+    
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Database integrity error creating test template: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Invalid data provided. Please check section and paper IDs."
+        )
+    except HTTPException as e:
+        # Pass through HTTPExceptions we've raised
+        db.rollback()
+        logger.error(f"Validation error creating test template: {e.detail}")
+        raise e
+
+        except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating test template: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="Failed to create test template"
+        )
+
+@router.post("/start", response_model=TestAttemptResponse)
+async def start_test(
+    attempt: TestAttemptBase,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Get template with sections in a single query
+        template = db.query(TestTemplate).options(
+            joinedload(TestTemplate.sections)
+        ).filter(
+            TestTemplate.template_id == attempt.test_template_id
+        ).first()
+            
+        # Debug - Print template and section details
+        print(f"STARTING TEST: Template ID={attempt.test_template_id}")
+        import random
+        
+        if template:
+            print(f"Found template: {template.template_name} with {len(template.sections)} sections")
+            
+            # Print directly to stdout since logger might be redirected
+            import sys
+            sys.stdout.flush()
+            
+            # Fix section_id_ref issues if needed
+            for idx, sec in enumerate(template.sections):
+                # Check if section_id_ref is valid by looking for questions
+                question_count = db.query(Question).filter(
+                    Question.paper_id == sec.paper_id,
+                    Question.section_id == sec.section_id_ref
+                ).count()
+                
+                print(f"Section {idx+1}: paper_id={sec.paper_id}, section_id_ref={sec.section_id_ref}, questions_found={question_count}")
+                sys.stdout.flush()
+                
+                # Important: If section_id_ref doesn't match any questions, try to fix it
+                if question_count == 0:
+                    # Try to find questions with this paper_id and any section_id
+                    available_questions = db.query(Question.section_id, func.count(Question.question_id).label('count'))\
+                        .filter(Question.paper_id == sec.paper_id)\
+                        .group_by(Question.section_id)\
+                        .order_by(desc('count'))\
+                        .first()
+                    
+                    if available_questions:
+                        correct_section_id = available_questions[0]
+                        print(f"WARNING: Fixed incorrect section_id_ref! Old={sec.section_id_ref}, New={correct_section_id}")
+                        sec.section_id_ref = correct_section_id
+                        db.add(sec)
+                        db.commit()
+                        db.refresh(sec)
+        
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Test template not found"
+            )        # Get required number of questions efficiently using subquery        questions = []
+        from datetime import date        # Log template sections before processing
+        logger.info(f"Template has {len(template.sections)} sections")
+        print(f"Template has {len(template.sections)} sections")
+        
+        # Debug output - print the raw template object
+        print(f"Template ID: {template.template_id}, Name: {template.template_name}")
+        
+        for idx, sec in enumerate(template.sections):
+            print(f"Template section {idx+1}: paper_id={sec.paper_id}, section_id_ref={sec.section_id_ref}, subsection_id={sec.subsection_id}, question_count={sec.question_count}")
+              # Check section_id_ref vs section.section_id if there's confusion
+            if hasattr(sec, 'section_id') and sec.section_id != sec.section_id_ref:
+                print(f"WARNING: Mismatch - section_id={sec.section_id}, section_id_ref={sec.section_id_ref}")
+                
+            # CRITICAL: Get the section's section_id_ref from the database to ensure we have the right value
+            try:
+                # Refresh section data from DB to ensure we have the right section_id_ref
+                db.refresh(sec)
+            except:
+                print(f"Failed to refresh section {sec.section_id} from database")            
+        questions = []
+        for section in template.sections:            # Query for valid questions for this section (valid_until >= today)
+            # Note: section.section_id_ref contains the section_id value
+            logger.info(f"Processing section with paper_id={section.paper_id}, section_id_ref={section.section_id_ref}")
+            print(f"Processing section with paper_id={section.paper_id}, section_id_ref={section.section_id_ref}")
+            
+            # Build query with explicit filters for debugging
+            query = db.query(Question).filter(Question.paper_id == section.paper_id)
+            
+            # Try to find questions using section_id_ref first
+            if section.section_id_ref:
+                print(f"Trying to filter on Question.section_id = {section.section_id_ref}")
+                
+                # First check if this section_id_ref exists in the sections table
+                section_exists = db.query(Section).filter(
+                    Section.section_id == section.section_id_ref,
+                    Section.paper_id == section.paper_id
+                ).first()
+                
+                if not section_exists:
+                    print(f"WARNING: section_id_ref={section.section_id_ref} doesn't exist in sections table for paper_id={section.paper_id}")
+                    # We'll try to fix it below
+                
+                # Check if we can find any VALID questions with this section_id_ref
+                section_questions_count = db.query(Question).filter(
+                    Question.paper_id == section.paper_id,
+                    Question.section_id == section.section_id_ref,
+                    Question.valid_until >= date.today()  # Only count valid questions
+                ).count()
+                print(f"Found {section_questions_count} VALID questions matching paper_id={section.paper_id}, section_id={section.section_id_ref}")
+                
+                # Also check total questions without the validity filter for diagnostics
+                all_questions_count = db.query(Question).filter(
+                    Question.paper_id == section.paper_id,
+                    Question.section_id == section.section_id_ref
+                ).count()
+                
+                if all_questions_count > section_questions_count:
+                    print(f"NOTE: There are {all_questions_count - section_questions_count} EXPIRED questions in this section")
+                
+                if section_questions_count > 0:
+                    # Use the section_id_ref field for filtering
+                    query = query.filter(Question.section_id == section.section_id_ref)
+                else:
+                    # CRITICAL FIX: If no questions found with section_id_ref, try finding questions with this paper_id
+                    print("No VALID questions found with section_id_ref, searching for other valid section_id...")
+                    
+                    # Find a section_id where VALID questions exist for this paper
+                    valid_section_query = db.query(Question.section_id, func.count(Question.question_id).label('count')).filter(
+                        Question.paper_id == section.paper_id,
+                        Question.valid_until >= date.today()
+                    ).group_by(Question.section_id).order_by(desc('count'))
+                    
+                    valid_sections = valid_section_query.all()
+                    
+                    if valid_sections:
+                        valid_section_ids = [row[0] for row in valid_sections]
+                        valid_section_counts = [row[1] for row in valid_sections]
+                        
+                        print(f"Found valid section_ids with counts: {list(zip(valid_section_ids, valid_section_counts))}")
+                        
+                        # Use the section with the most valid questions
+                        correct_section_id = valid_sections[0][0]
+                        correct_section_count = valid_sections[0][1]
+                        
+                        print(f"FIXING: Using section_id={correct_section_id} with {correct_section_count} valid questions instead of {section.section_id_ref}")
+                        
+                        # Update the section.section_id_ref in the database for future test attempts
+                        old_section_id = section.section_id_ref
+                        section.section_id_ref = correct_section_id
+                        db.add(section)
+                        db.commit()
+                        db.refresh(section)
+                        
+                        logger.info(f"Updated TestTemplateSection - changed section_id_ref from {old_section_id} to {correct_section_id}")
+                        
+                        # Use the corrected section_id for filtering
+                        query = query.filter(Question.section_id == correct_section_id)
+                    else:
+                        # Check for ANY questions (even expired ones)
+                        all_section_query = db.query(Question.section_id, func.count(Question.question_id).label('count')).filter(
+                            Question.paper_id == section.paper_id
+                        ).group_by(Question.section_id).order_by(desc('count'))
+                        
+                        all_sections = all_section_query.all()
+                        
+                        if all_sections:
+                            print(f"WARNING: Found sections with questions, but they are all expired: {all_sections}")
+                            logger.warning(f"Found sections with questions, but they are all expired: {all_sections}")
+                        else:
+                            print(f"WARNING: No valid sections found for paper_id={section.paper_id}")
+                            logger.warning(f"No valid sections found for paper_id={section.paper_id}")
+            else:
+                print("WARNING: section_id_ref is None - not filtering by section!")
+                
+            if section.subsection_id:
+                print(f"Filtering on Question.subsection_id = {section.subsection_id}")
+                query = query.filter(Question.subsection_id == section.subsection_id)
+                
+            # Check for questions without validity filter first (for debugging)
+            unfiltered_count = query.count()
+            print(f"Found {unfiltered_count} questions before applying valid_until filter")
+            
+            # Apply the valid_until filter
+            query = query.filter(Question.valid_until >= date.today())
+            
+            # Get question count before limit for debugging
+            total_available = query.count()
+            logger.info(f"Total available questions before limit: {total_available}")
+            
+            # Apply random order and limit
+            section_questions = query.order_by(func.random()).limit(section.question_count).all()
+            
+            # Log results for diagnostic purposes
+            logger.info(f"Found {len(section_questions)} questions for paper_id={section.paper_id}, "
+                       f"section_id={section.section_id_ref}, subsection_id={section.subsection_id}")
+
+            questions.extend(section_questions)# Log the summary of questions found
+        logger.info(f"Total questions found across all sections: {len(questions)}")
+        
+        # Get total questions required from all sections
+        total_questions_required = sum(section.question_count for section in template.sections)
+        logger.info(f"Total questions required: {total_questions_required}")
+        
+        # Check if we have enough questions and provide detailed error if not
+        if not questions:
+            logger.error("No valid questions found for any of the requested sections")
+            
+            # Check if we have questions that aren't active
+            inactive_questions_exist = False
+            for section in template.sections:
+                # Query count of questions WITHOUT the valid_until filter
+                unfiltered_count = db.query(Question).filter(
+                    Question.paper_id == section.paper_id,
+                    Question.section_id == section.section_id_ref
+                ).count()
+                
+                if unfiltered_count > 0:
+                    inactive_questions_exist = True
+                    logger.error(f"Found {unfiltered_count} questions for section {section.section_id_ref} but they are not active (valid_until < today)")
+            
+            # Provide more specific error message
+            if inactive_questions_exist:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Questions exist but are not currently active. Please contact an administrator to activate questions."
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No active questions available for the selected sections"
+                )
+        elif len(questions) < total_questions_required:
+            logger.error(f"Not enough questions: found {len(questions)}, need {total_questions_required}")              # Create a more detailed error message
+            section_details = []
+            for section in template.sections:
+                # Log section details for debugging
+                logger.info(f"Checking questions for section_id_ref={section.section_id_ref}")
+                  # Count questions for this section
+                section_count = sum(1 for q in questions if q.section_id == section.section_id_ref and 
+                                  q.paper_id == section.paper_id)
+                
+                # Log match results
+                logger.info(f"Found {section_count} questions matching section_id_ref={section.section_id_ref}")
+                print(f"Found {section_count} questions matching section_id={section.section_id_ref} (out of {len(questions)} total)")
+                
+                # Add to error details
+                section_details.append(f"Section {section.section_id_ref}: Found {section_count}/{section.question_count}")
+            
+            detail_message = "Not enough active questions available for the test. " + ", ".join(section_details)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detail_message
+            )        # Create test attempt with transaction
+        db_attempt = TestAttempt(
+            test_template_id=template.template_id,
+            user_id=current_user.user_id,
+            duration_minutes=attempt.duration_minutes,
+            status="InProgress",
+            start_time=datetime.utcnow(),
+            test_type=template.test_type,  # Add test_type from template
+            total_allotted_duration_minutes=attempt.duration_minutes,  # Set total_allotted_duration_minutes
+            current_question_index=0  # Initialize the question index
+        )
+        
+        # Handle adaptive test if requested
+        if attempt.is_adaptive:
+            # Choose adaptive strategy if not specified
+            if attempt.adaptive_strategy:
+                db_attempt.adaptive_strategy_chosen = attempt.adaptive_strategy
+            else:
+                # Randomly choose between hard_to_easy or easy_to_hard
+                db_attempt.adaptive_strategy_chosen = random.choice(['hard_to_easy', 'easy_to_hard'])
+                
+            logger.info(f"Starting adaptive test with strategy: {db_attempt.adaptive_strategy_chosen}")
+                
+            # For adaptive tests, if we have enough questions with different difficulty levels,
+            # we might want to pre-filter questions to ensure we have enough for each difficulty
+            difficulty_counts = {
+                "Easy": sum(1 for q in questions if q.difficulty_level == "Easy"),
+                "Medium": sum(1 for q in questions if q.difficulty_level == "Medium"),
+                "Hard": sum(1 for q in questions if q.difficulty_level == "Hard")
+            }
+            
+            logger.info(f"Questions by difficulty: Easy={difficulty_counts['Easy']}, "
+                      f"Medium={difficulty_counts['Medium']}, Hard={difficulty_counts['Hard']}")
+            
+            # If any difficulty level has zero questions, assign at least some default difficulty
+            if any(count == 0 for count in difficulty_counts.values()):
+                # Assign some questions with default difficulty if needed
+                questions_with_missing_difficulty = [q for q in questions if q.difficulty_level is None]
+                difficulties = ["Easy", "Medium", "Hard"]
+                for i, question in enumerate(questions_with_missing_difficulty):
+                    question.difficulty_level = difficulties[i % 3]
+                
+                # Update difficulty counts
+                difficulty_counts = {
+                    "Easy": sum(1 for q in questions if q.difficulty_level == "Easy"),
+                    "Medium": sum(1 for q in questions if q.difficulty_level == "Medium"),
+                    "Hard": sum(1 for q in questions if q.difficulty_level == "Hard")
+                }
+                
+                logger.info(f"Updated questions by difficulty: Easy={difficulty_counts['Easy']}, "
+                          f"Medium={difficulty_counts['Medium']}, Hard={difficulty_counts['Hard']}")
+                
+        db.add(db_attempt)
+        db.flush()
+
+        # Add all answers in bulk
+        answers = [
+            TestAnswer(
+                attempt_id=db_attempt.attempt_id,
+                question_id=q.question_id,
+                time_taken_seconds=0
+            ) for q in questions
+        ]
+        db.bulk_save_objects(answers)
+        db.commit()
+        
+        # Make sure all required fields are in the response model
+        db.refresh(db_attempt)
+        
+        # Log the key fields for debugging
+        logger.info(f"Test attempt created: id={db_attempt.attempt_id}, test_type={db_attempt.test_type}, total_allotted_duration_minutes={db_attempt.total_allotted_duration_minutes}")
+        print(f"DEBUG: Test attempt created with fields: test_type={db_attempt.test_type}, total_allotted_duration_minutes={db_attempt.total_allotted_duration_minutes}")
+
+        return db_attempt
+
+
+        except HTTPException as e:
+        db.rollback()
+        raise e
+
+        except Exception as e:
+        db.rollback()
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error starting test: {str(e)}")
+        logger.error(f"Error trace: {error_trace}")
+        # Print to stdout for direct debugging
+        print(f"ERROR STARTING TEST: {str(e)}")
+        print(f"ERROR TRACE: {error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred. The error has been logged."
+        )
+
+@router.post("/submit/{attempt_id}/answer")
+async def submit_answer(
+    attempt_id: int,
+    answer: TestAnswerSubmit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Get test attempt and verify ownership
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+        
+        if attempt.status != "InProgress":
+            raise APIErrorHandler.handle_validation_error("Test is not in progress")
+
+        # Update or create answer
+        test_answer = db.query(TestAnswer).filter(
+            TestAnswer.attempt_id == attempt_id,
+            TestAnswer.question_id == answer.question_id
+        ).first()
+        
+        if not test_answer:
+            raise APIErrorHandler.handle_validation_error("Question not part of this test")
+
+        question = db.query(Question).filter(Question.question_id == answer.question_id).first()
+        
+        if answer.selected_option_index is not None:
+            # Validate option index
+            AnswerValidation.validate_answer_option(answer.selected_option_index)
+            test_answer.is_correct = (answer.selected_option_index == question.correct_option_index)
+        
+        # Validate time taken
+        test_answer.time_taken_seconds = TestAttemptValidation.validate_time_taken(
+            answer.time_taken_seconds
+        )
+        test_answer.selected_option_index = answer.selected_option_index
+        test_answer.is_marked_for_review = answer.is_marked_for_review
+        
+        db.commit()
+        logger.info(f"Answer submitted for question {answer.question_id} in attempt {attempt_id}")
+        return {"status": "success"}
+
+    except HTTPException as he:
+        raise he
+    except ValueError as ve:
+        raise APIErrorHandler.handle_validation_error(str(ve))
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error submitting answer: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "submitting answer")
+@router.post("/finish/{attempt_id}")
+async def finish_test(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    try:
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+        
+        if attempt.status != "InProgress":
+            raise APIErrorHandler.handle_validation_error("Test is not in progress")        
+            
+        # Calculate scores
+        answers = db.query(TestAnswer).filter(TestAnswer.attempt_id == attempt_id).all()
+        
+        # Calculate correctness by comparing selected_option_index with question's correct_option_index
+        correct_count = 0
+        incorrect_count = 0
+        
+        for answer in answers:
+            # Get associated question to check correct answer
+            question = db.query(Question).filter(Question.question_id == answer.question_id).first()
+            if question and answer.selected_option_index is not None:
+                # Compare user's answer with the correct answer
+                is_correct = (answer.selected_option_index == question.correct_option_index)
+                if is_correct:
+                    correct_count += 1
+                else:
+                    incorrect_count += 1
+        
+        total_questions = len(answers)
+        
+        if total_questions == 0:
+            raise APIErrorHandler.handle_validation_error("No answers found for this test attempt")
+
+        # Calculate weighted score (with negative marking of 0.25)
+        weighted_score = correct_count - (incorrect_count * 0.25)
+
+        raw_score = (correct_count / total_questions) * 100
+        weighted_score_percentage = (weighted_score / total_questions) * 100
+
+        # Validate scores
+        TestAttemptValidation.validate_attempt_scores(raw_score, weighted_score_percentage)
+
+        # Update attempt
+        attempt.status = TestAttemptValidation.validate_attempt_status("Completed")
+        attempt.end_time = datetime.utcnow()
+        attempt.score = raw_score
+        attempt.weighted_score = weighted_score_percentage
+        attempt.duration_minutes = int((attempt.end_time - attempt.start_time).total_seconds() / 60)
+        
+        db.commit()
+        db.refresh(attempt)
+        
+        # Schedule background task for performance aggregation
+        background_tasks.add_task(performance_aggregation_task, attempt_id, db)
+        
+        logger.info(f"Test attempt {attempt_id} completed successfully by user {current_user.user_id}")
+        logger.info(f"Performance aggregation task scheduled for attempt {attempt_id}")
+        
+        return attempt
+
+    except HTTPException as he:
+        # Pass through HTTP exceptions
+        raise he
+    except ValueError as ve:
+        # Handle validation errors
+        raise APIErrorHandler.handle_validation_error(str(ve))
+    except Exception as e:
+        # Handle unexpected errors
+        db.rollback()
+        logger.error(f"Error finishing test attempt {attempt_id}: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "finishing test")
+
+@router.get("/templates", response_model=List[TestTemplateResponse])
+async def get_test_templates(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    templates = db.query(TestTemplate).offset(skip).limit(limit).all()
+    return templates
+
+@router.get("/attempts", response_model=List[TestAttemptResponse])
+async def get_test_attempts(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    attempts = db.query(TestAttempt).filter(
+        TestAttempt.user_id == current_user.user_id
+    ).offset(skip).limit(limit).all()
+    return attempts
+
+@router.get("/questions/{attempt_id}")
+async def get_test_questions(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        # Verify test attempt belongs to user
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+
+        # Use joinedload to fetch questions and their options efficiently
+        answers_with_questions = db.query(TestAnswer).filter(
+            TestAnswer.attempt_id == attempt_id
+        ).options(
+            joinedload(TestAnswer.question).joinedload(Question.options)
+        ).all()
+
+        questions = []
+        for answer in answers_with_questions:
+            question = answer.question
+            if question:
+                questions.append({
+                    "question_id": question.question_id,
+                    "question_text": question.question_text,
+                    "options": [
+                        {
+                            "option_id": option.option_id,
+                            "option_text": option.option_text,
+                            "option_order": option.option_order
+                        }
+                        for option in question.options
+                    ]
+                })
+
+        logger.info(f"Retrieved {len(questions)} questions for attempt {attempt_id}")
+        return questions
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error retrieving questions for attempt {attempt_id}: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "retrieving test questions")
+async def get_test_with_answers(
+    attempt_id: int,
+    db: Session,
+    current_user: User = Depends(verify_token)
+):
+    # Get test attempt with eager loading of relationships
+    attempt = db.query(TestAttempt).options(
+        joinedload(TestAttempt.answers).joinedload(TestAnswer.question).joinedload(Question.options)
+    ).filter(
+        TestAttempt.attempt_id == attempt_id,
+        TestAttempt.user_id == current_user.user_id
+    ).first()
+
+    if not attempt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test attempt not found"
+        )
+    return attempt
+
+@router.get("/attempts/{attempt_id}/details", response_model=TestAnswerResponse)
+async def get_attempt_details(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    try:
+        attempt = await get_test_with_answers(attempt_id, db, current_user)
+        
+        answers = []
+        for answer in attempt.answers:
+            answers.append({
+                "question_id": answer.question.question_id,
+                "question_text": answer.question.question_text,
+                "options": [opt.option_text for opt in answer.question.options],
+                "selected_option_index": answer.selected_option_index,
+                "correct_option_index": answer.question.correct_option_index,
+                "marks": answer.marks,
+                "time_taken_seconds": answer.time_taken_seconds
+            })
+
+        return {
+            "attempt_id": attempt.attempt_id,
+            "test_type": attempt.test_template.test_type,
+            "status": attempt.status,
+            "start_time": attempt.start_time,
+            "end_time": attempt.end_time,
+            "score": attempt.score,
+            "weighted_score": attempt.weighted_score,
+            "answers": answers
+        }
+    except Exception as e:
+        logger.error(f"Error getting attempt details: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving test attempt details"
+        )
+
+@router.post("/abandon/{attempt_id}", status_code=status.HTTP_200_OK)
+async def abandon_test_attempt(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """
+    Allows a user to abandon an in-progress test attempt.
+    The test's status will be set to 'Abandoned', and no final score will be calculated.
+    """
+    try:
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+        
+        if attempt.status != "InProgress":
+            raise APIErrorHandler.handle_validation_error(f"Test attempt is already {attempt.status}. Only in-progress tests can be abandoned.")
+        
+        # Update the test attempt
+        attempt.status = TestAttemptValidation.validate_attempt_status("Abandoned")
+        attempt.end_time = datetime.utcnow()
+        
+        # Calculate the actual duration in minutes
+        attempt.duration_minutes = int((attempt.end_time - attempt.start_time).total_seconds() / 60)
+        
+        db.commit()
+        db.refresh(attempt)
+        
+        logger.info(f"Test attempt {attempt_id} abandoned by user {current_user.user_id}")
+        
+        return {
+            "message": "Test attempt abandoned successfully",
+            "attempt_id": attempt.attempt_id,
+            "status": attempt.status
+        }
+
+    except HTTPException as he:
+        # Pass through HTTP exceptions
+        raise he
+    except ValueError as ve:
+        # Handle validation errors
+        raise APIErrorHandler.handle_validation_error(str(ve))
+    except Exception as e:
+        # Handle unexpected errors
+        db.rollback()
+        logger.error(f"Error abandoning test attempt {attempt_id}: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "abandoning test")
+
+@router.get("/{attempt_id}/next-question")
+async def get_next_adaptive_question(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """Get the next question for an adaptive test based on the user's current performance"""
+    try:
+        # Get test attempt with eager loading of answers
+        attempt = db.query(TestAttempt).options(
+            joinedload(TestAttempt.answers)
+        ).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+        
+        if attempt.status != "InProgress":
+            raise APIErrorHandler.handle_validation_error("Test is not in progress")
+        
+        # Check if this is an adaptive test
+        if not attempt.adaptive_strategy_chosen:
+            raise APIErrorHandler.handle_validation_error("This is not an adaptive test")
+        
+        # Get all questions for this attempt, ordered by question_id to ensure deterministic ordering
+        questions_query = db.query(TestAnswer).options(
+            joinedload(TestAnswer.question)
+        ).filter(
+            TestAnswer.attempt_id == attempt_id
+        ).join(
+            Question, TestAnswer.question_id == Question.question_id
+        ).order_by(Question.question_id)
+        
+        # Get all questions for this attempt
+        questions = questions_query.all()
+        
+        if not questions:
+            raise APIErrorHandler.handle_validation_error("No questions found for this test attempt")
+            
+        # Get the current question index from the attempt (defaults to 0 if not set)
+        current_index = attempt.current_question_index
+        
+        # Check if we've reached the end of the test
+        if current_index >= len(questions):
+            return {
+                "status": "completed",
+                "message": "All questions have been answered"
+            }
+        
+        # Get the next question
+        current_answer = questions[current_index]
+        
+        # If this is an adaptive test with strategy, reorder questions if we're at the first question
+        if current_index == 0 and attempt.adaptive_strategy_chosen:
+            strategy = attempt.adaptive_strategy_chosen
+            
+            # Sort questions by difficulty based on the chosen strategy
+            difficulty_order = []
+            
+            if strategy == "easy_to_hard":
+                # Sort from easy to hard: Easy questions first, then Medium, then Hard
+                difficulty_map = {
+                    "Easy": 0,
+                    "Medium": 1, 
+                    "Hard": 2
+                }
+                # Sort questions by difficulty level
+                sorted_questions = sorted(questions, key=lambda x: difficulty_map.get(x.question.difficulty_level, 1))
+                questions = sorted_questions
+                
+            elif strategy == "hard_to_easy":
+                # Sort from hard to easy: Hard questions first, then Medium, then Easy
+                difficulty_map = {
+                    "Hard": 0,
+                    "Medium": 1,
+                    "Easy": 2
+                }
+                # Sort questions by difficulty level
+                sorted_questions = sorted(questions, key=lambda x: difficulty_map.get(x.question.difficulty_level, 1))
+                questions = sorted_questions
+            
+            # First question after sorting
+            current_answer = questions[current_index]
+        
+        # Get the question details
+        question = current_answer.question
+        
+        # Prepare response
+        response = {
+            "question_id": question.question_id,
+            "question_text": question.question_text,
+            "question_type": question.question_type,
+            "difficulty_level": question.difficulty_level,
+            "options": [
+                {
+                    "option_id": option.option_id,
+                    "option_text": option.option_text,
+                    "option_order": option.option_order
+                }
+                for option in question.options
+            ],
+            "current_index": current_index,
+            "total_questions": len(questions),
+            "is_marked_for_review": current_answer.is_marked_for_review
+        }
+        
+        return response
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error getting next adaptive question: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "retrieving next adaptive question")
+
+@router.post("/{attempt_id}/next-question")
+async def submit_and_get_next_question(
+    attempt_id: int,
+    answer: TestAnswerSubmit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """Submit the current answer and get the next question for an adaptive test"""
+    try:
+        # First submit the current answer
+        await submit_answer(attempt_id, answer, db, current_user)
+        
+        # Get the test attempt
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise APIErrorHandler.handle_not_found("Test attempt", attempt_id)
+        
+        # Increment the current question index
+        attempt.current_question_index += 1
+        db.commit()
+        
+        # Then get the next question
+        return await get_next_adaptive_question(attempt_id, db, current_user)
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error submitting and getting next question: {str(e)}")
+        raise APIErrorHandler.handle_db_error(e, "submitting and retrieving next question")
+
+# Add utility function to update user performance profile
+# Function removed as it's replaced by performance_aggregation_task
+        for answer in answers:
+            # Skip unanswered questions
+            if answer.selected_option_index is None:
+                continue
+                
+            # Get the question details
+            question = db.query(Question).filter(Question.question_id == answer.question_id).first()
+            if not question:
+                continue
+                
+            # Determine correctness
+            is_correct = (answer.selected_option_index == question.correct_option_index)
+            
+            # Create profile keys for different aggregation levels
+            # Key format: (paper_id, section_id, subsection_id)
+            # None values for higher aggregation levels
+            
+            # Paper level profile
+            paper_key = (question.paper_id, None, None)
+            if paper_key not in profiles:
+                profiles[paper_key] = {'correct_easy': 0, 'incorrect_easy': 0, 
+                                      'correct_medium': 0, 'incorrect_medium': 0,
+                                      'correct_hard': 0, 'incorrect_hard': 0,
+                                      'total': 0, 'time': 0}
+            
+            # Section level profile
+            section_key = (question.paper_id, question.section_id, None)
+            if section_key not in profiles:
+                profiles[section_key] = {'correct_easy': 0, 'incorrect_easy': 0, 
+                                        'correct_medium': 0, 'incorrect_medium': 0,
+                                        'correct_hard': 0, 'incorrect_hard': 0,
+                                        'total': 0, 'time': 0}
+            
+            # Subsection level profile (if applicable)
+            if question.subsection_id:
+                subsection_key = (question.paper_id, question.section_id, question.subsection_id)
+                if subsection_key not in profiles:
+                    profiles[subsection_key] = {'correct_easy': 0, 'incorrect_easy': 0, 
+                                              'correct_medium': 0, 'incorrect_medium': 0,
+                                              'correct_hard': 0, 'incorrect_hard': 0,
+                                              'total': 0, 'time': 0}
+                
+            # Update statistics based on difficulty and correctness
+            difficulty = question.difficulty_level
+            
+            # Update all applicable profiles
+            keys_to_update = [paper_key]
+            if section_key != paper_key:
+                keys_to_update.append(section_key)
+            if question.subsection_id and subsection_key != section_key:
+                keys_to_update.append(subsection_key)
+                
+            # Update each profile
+            for key in keys_to_update:
+                # Increment correct/incorrect counts by difficulty
+                if difficulty == "Easy":
+                    if is_correct:
+                        profiles[key]['correct_easy'] += 1
+                    else:
+                        profiles[key]['incorrect_easy'] += 1
+                elif difficulty == "Hard":
+                    if is_correct:
+                        profiles[key]['correct_hard'] += 1
+                    else:
+                        profiles[key]['incorrect_hard'] += 1
+                else:  # Default: Medium
+                    if is_correct:
+                        profiles[key]['correct_medium'] += 1
+                    else:
+                        profiles[key]['incorrect_medium'] += 1
+                
+                # Increment total and time
+                profiles[key]['total'] += 1
+                profiles[key]['time'] += answer.time_taken_seconds
+        
+        # Now update or create the UserPerformanceProfile records
+        for key, stats in profiles.items():
+            paper_id, section_id, subsection_id = key
+            
+            # Try to find existing profile
+            profile = db.query(UserPerformanceProfile).filter(
+                UserPerformanceProfile.user_id == user_id,
+                UserPerformanceProfile.paper_id == paper_id,
+                UserPerformanceProfile.section_id == section_id,
+                UserPerformanceProfile.subsection_id == subsection_id
+            ).first()
+            
+            if not profile:
+                # Create new profile
+                profile = UserPerformanceProfile(
+                    user_id=user_id,
+                    paper_id=paper_id,
+                    section_id=section_id,
+                    subsection_id=subsection_id,
+                    correct_easy_count=stats['correct_easy'],
+                    incorrect_easy_count=stats['incorrect_easy'],
+                    correct_medium_count=stats['correct_medium'],
+                    incorrect_medium_count=stats['incorrect_medium'],
+                    correct_hard_count=stats['correct_hard'],
+                    incorrect_hard_count=stats['incorrect_hard'],
+                    total_questions_attempted=stats['total'],
+                    total_time_spent_seconds=stats['time']
+                )
+                db.add(profile)
+            else:
+                # Update existing profile
+                profile.correct_easy_count += stats['correct_easy']
+                profile.incorrect_easy_count += stats['incorrect_easy']
+                profile.correct_medium_count += stats['correct_medium']
+                profile.incorrect_medium_count += stats['incorrect_medium']
+                profile.correct_hard_count += stats['correct_hard']
+                profile.incorrect_hard_count += stats['incorrect_hard']
+                profile.total_questions_attempted += stats['total']
+                profile.total_time_spent_seconds += stats['time']
+        
+        # Update topic summaries
+        await update_topic_summaries(db, user_id)
+        
+        # Update overall summary
+        await update_overall_summary(db, user_id)
+        
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user performance profiles: {str(e)}")
+        # Don't raise exception as this is a background process and should not fail the main flow
+
+async def update_topic_summaries(db: Session, user_id: int):
+    """Update user topic summaries based on performance profiles"""
+    try:
+        # Get all performance profiles for this user
+        profiles = db.query(UserPerformanceProfile).filter(
+            UserPerformanceProfile.user_id == user_id
+        ).all()
+        
+        # Process each profile to create or update topic summaries
+        for profile in profiles:
+            # Try to find existing summary for this topic
+            summary = db.query(UserTopicSummary).filter(
+                UserTopicSummary.user_id == user_id,
+                UserTopicSummary.paper_id == profile.paper_id,
+                UserTopicSummary.section_id == profile.section_id,
+                UserTopicSummary.subsection_id == profile.subsection_id
+            ).first()
+            
+            if not summary:
+                # Create new summary
+                summary = UserTopicSummary(
+                    user_id=user_id,
+                    paper_id=profile.paper_id,
+                    section_id=profile.section_id,
+                    subsection_id=profile.subsection_id,
+                    total_questions_answered_in_topic=profile.total_questions_attempted
+                )
+                db.add(summary)
+            else:
+                # Update existing summary
+                summary.total_questions_answered_in_topic = profile.total_questions_attempted
+            
+            # Calculate accuracy by difficulty
+            if (profile.correct_easy_count + profile.incorrect_easy_count) > 0:
+                summary.accuracy_easy_topic = profile.correct_easy_count / (profile.correct_easy_count + profile.incorrect_easy_count)
+            
+            if (profile.correct_medium_count + profile.incorrect_medium_count) > 0:
+                summary.accuracy_medium_topic = profile.correct_medium_count / (profile.correct_medium_count + profile.incorrect_medium_count)
+            
+            if (profile.correct_hard_count + profile.incorrect_hard_count) > 0:
+                summary.accuracy_hard_topic = profile.correct_hard_count / (profile.correct_hard_count + profile.incorrect_hard_count)
+            
+            # Calculate average time per question
+            if profile.total_questions_attempted > 0:
+                summary.avg_time_per_question_topic = profile.total_time_spent_seconds / profile.total_questions_attempted
+        
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user topic summaries: {str(e)}")
+
+async def update_overall_summary(db: Session, user_id: int):
+    """Update user overall summary based on all their test attempts and performance profiles"""
+    try:
+        # Get or create overall summary
+        summary = db.query(UserOverallSummary).filter(
+            UserOverallSummary.user_id == user_id
+        ).first()
+        
+        if not summary:
+            summary = UserOverallSummary(user_id=user_id)
+            db.add(summary)
+        
+        # Count completed tests
+        completed_tests_count = db.query(TestAttempt).filter(
+            TestAttempt.user_id == user_id,
+            TestAttempt.status == "Completed"
+        ).count()
+        
+        # Calculate average score from completed tests
+        avg_score = db.query(func.avg(TestAttempt.score)).filter(
+            TestAttempt.user_id == user_id,
+            TestAttempt.status == "Completed"
+        ).scalar() or 0.0
+        
+        # Get total questions answered from performance profiles
+        questions_answered = db.query(
+            func.sum(UserPerformanceProfile.total_questions_attempted)
+        ).filter(
+            UserPerformanceProfile.user_id == user_id
+        ).scalar() or 0
+        
+        # Calculate overall accuracy
+        total_correct = db.query(
+            func.sum(UserPerformanceProfile.correct_easy_count + 
+                   UserPerformanceProfile.correct_medium_count + 
+                   UserPerformanceProfile.correct_hard_count)
+        ).filter(
+            UserPerformanceProfile.user_id == user_id
+        ).scalar() or 0
+        
+        overall_accuracy = 0.0
+        if questions_answered > 0:
+            overall_accuracy = (total_correct / questions_answered) * 100
+        
+        # Calculate average time per question
+        total_time = db.query(
+            func.sum(UserPerformanceProfile.total_time_spent_seconds)
+        ).filter(
+            UserPerformanceProfile.user_id == user_id
+        ).scalar() or 0
+        
+        avg_time_per_question = 0.0
+        if questions_answered > 0:
+            avg_time_per_question = total_time / questions_answered
+        
+        # Update summary
+        summary.total_tests_completed = completed_tests_count
+        summary.total_questions_answered = questions_answered
+        summary.overall_accuracy_percentage = overall_accuracy
+        summary.avg_score_completed_tests = avg_score
+        summary.avg_time_per_question_overall = avg_time_per_question
+        
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user overall summary: {str(e)}")

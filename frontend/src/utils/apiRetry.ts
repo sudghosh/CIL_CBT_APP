@@ -67,20 +67,61 @@ export async function requestWithRetry<T>(
 /**
  * Wrapper for axios methods with retry functionality
  */
+/**
+ * Create an axios instance with the same configuration as the main API instance
+ * This ensures headers like Authorization are consistently applied
+ */
+const createConfiguredAxios = () => {
+  const instance = axios.create({
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    timeout: 20000,
+  });
+    // Add token to requests if it exists (same logic as in api.ts)
+  instance.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        // Ensure headers object exists
+        config.headers = config.headers || {};
+        
+        // Set Authorization header
+        config.headers.Authorization = `Bearer ${token}`;
+        
+        // Log in development mode
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[ApiRetry] Adding token to request: ${config.method?.toUpperCase()} ${config.url}`);
+        }
+      } else {
+        console.warn(`[ApiRetry] No token found for request to ${config.url}`);
+      }
+      return config;
+    },
+    (error) => {
+      console.error('[ApiRetry] Request interceptor error:', error);
+      return Promise.reject(error);
+    }
+  );
+  
+  return instance;
+};
+
+// Get a configured axios instance for each request to ensure fresh auth token
 export const axiosWithRetry = {
   get: <T>(url: string, config?: AxiosRequestConfig, retryConfig?: Partial<RetryConfig>) => {
-    return requestWithRetry<T>(() => axios.get<T>(url, config), retryConfig);
+    return requestWithRetry<T>(() => createConfiguredAxios().get<T>(url, config), retryConfig);
   },
   
   post: <T>(url: string, data?: any, config?: AxiosRequestConfig, retryConfig?: Partial<RetryConfig>) => {
-    return requestWithRetry<T>(() => axios.post<T>(url, data, config), retryConfig);
+    return requestWithRetry<T>(() => createConfiguredAxios().post<T>(url, data, config), retryConfig);
   },
   
   put: <T>(url: string, data?: any, config?: AxiosRequestConfig, retryConfig?: Partial<RetryConfig>) => {
-    return requestWithRetry<T>(() => axios.put<T>(url, data, config), retryConfig);
+    return requestWithRetry<T>(() => createConfiguredAxios().put<T>(url, data, config), retryConfig);
   },
   
   delete: <T>(url: string, config?: AxiosRequestConfig, retryConfig?: Partial<RetryConfig>) => {
-    return requestWithRetry<T>(() => axios.delete<T>(url, config), retryConfig);
+    return requestWithRetry<T>(() => createConfiguredAxios().delete<T>(url, config), retryConfig);
   }
 };

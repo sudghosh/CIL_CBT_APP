@@ -6,12 +6,11 @@ $projectDir = $PSScriptRoot
 Set-Location -Path $projectDir
 
 # Restart the backend container
-try {
-    Write-Host "Stopping backend container..." -ForegroundColor Yellow
-    docker-compose stop backend
+try {    Write-Host "Stopping backend container..." -ForegroundColor Yellow
+    docker-compose -f docker-compose.dev.yml stop backend
     
     Write-Host "Starting backend container..." -ForegroundColor Yellow
-    docker-compose start backend
+    docker-compose -f docker-compose.dev.yml start backend
     
     Write-Host "Backend service restarted successfully." -ForegroundColor Green
     Write-Host "Please wait a few moments for the service to fully initialize before attempting uploads again."

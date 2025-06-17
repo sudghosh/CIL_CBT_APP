@@ -1,0 +1,72 @@
+// Fix for the testsAPI.createTemplate method - replace the existing method with this one
+createTemplate: (data: any) => {
+  console.log('Creating template with data:', JSON.stringify(data, null, 2));
+  
+  // Data normalization to ensure proper format
+  let normalizedData = { ...data };
+  
+  // Ensure sections is an array if it's not provided
+  if (!normalizedData.sections) {
+    normalizedData.sections = [];
+  }
+  
+  // Handle legacy format (paper_id, section_id as direct properties)
+  if (normalizedData.paper_id && !normalizedData.sections.length) {
+    // Create a section object from direct properties
+    normalizedData.sections.push({
+      paper_id: normalizedData.paper_id,
+      section_id: normalizedData.section_id || null,
+      subsection_id: normalizedData.subsection_id || null,
+      question_count: normalizedData.question_count || 10
+    });
+    
+    // Remove the direct properties
+    delete normalizedData.paper_id;
+    delete normalizedData.section_id;
+    delete normalizedData.subsection_id;
+    delete normalizedData.question_count;
+  }
+  
+  // Validate all section objects have the required fields
+  for (const section of normalizedData.sections) {
+    if (!section.paper_id) {
+      console.error('Section missing required paper_id:', section);
+      return Promise.reject(new Error('Invalid section data: Missing paper_id'));
+    }
+    if (!section.question_count || section.question_count < 1) {
+      console.error('Section has invalid question_count:', section);
+      return Promise.reject(new Error('Invalid section data: Question count must be at least 1'));
+    }
+  }
+  
+  console.log('Sending normalized template data:', JSON.stringify(normalizedData, null, 2));
+  
+  return api.post('/tests/templates', normalizedData)
+    .then(response => {
+      console.log('Template creation successful. Response:', JSON.stringify(response.data, null, 2));
+      return response;
+    })
+    .catch(error => {
+      console.error('Template creation failed with error:', error);
+      console.error('Request payload was:', JSON.stringify(normalizedData, null, 2));
+      
+      // Store section errors for UI feedback if applicable
+      if (error.response?.status === 404 && error.response.data?.detail?.includes('Section with ID')) {
+        try {
+          const sectionMatch = error.response.data.detail.match(/Section with ID (\d+) not found in paper (\d+)/);
+          if (sectionMatch && sectionMatch.length === 3) {
+            const sectionId = parseInt(sectionMatch[1]);
+            const paperId = parseInt(sectionMatch[2]);
+            
+            const sectionErrors = JSON.parse(sessionStorage.getItem('section_errors') || '{}');
+            sectionErrors[`${paperId}-${sectionId}`] = 404;
+            sessionStorage.setItem('section_errors', JSON.stringify(sectionErrors));
+          }
+        } catch (e) {
+          console.error('Error storing section error info:', e);
+        }
+      }
+      
+      throw error;
+    });
+},

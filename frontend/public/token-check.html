@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Check Utility</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .tool-section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .output {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 10px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    h2 {
+      color: #333;
+    }
+    .info {
+      color: #0275d8;
+    }
+  </style>
+</head>
+<body>
+  <h1>Authentication Token Check Utility</h1>
+  
+  <div class="info">
+    <p>This utility helps diagnose authentication issues with the CIL HR Exam application.</p>
+    <p>Open the browser console (F12 or right-click > Inspect > Console) to see detailed logs.</p>
+  </div>
+  
+  <div class="tool-section">
+    <h2>Token Actions</h2>
+    <button onclick="tokenUtils.check()">Check Current Token</button>
+    <button onclick="tokenUtils.load()">Load Token from File</button>
+    <button onclick="tokenUtils.verify()">Run Full Verification</button>
+    <button onclick="logOutput('Clearing token...'); localStorage.removeItem('token'); logOutput('Token cleared');">Clear Token</button>
+  </div>
+  
+  <div class="tool-section">
+    <h2>API Tests</h2>
+    <button onclick="testAndLog('http://localhost:8000/health', false)">Test Health Endpoint</button>
+    <button onclick="testAndLog('http://localhost:8000/auth/me')">Test Auth/Me Endpoint</button>
+    <button onclick="testAndLog('http://localhost:8000/api/papers/')">Test Papers Endpoint</button>
+  </div>
+  
+  <div class="output" id="output">Output will appear here...</div>
+  
+  <script src="token-check.js"></script>
+  <script>
+    // Utility to log output to the page
+    function logOutput(message) {
+      const outputDiv = document.getElementById('output');
+      const timestamp = new Date().toLocaleTimeString();
+      outputDiv.innerHTML = `[${timestamp}] ${message}\n` + outputDiv.innerHTML;
+    }
+    
+    // Test an endpoint and log the result
+    async function testAndLog(url, requiresAuth = true) {
+      logOutput(`Testing ${url}...`);
+      const result = await tokenUtils.test(url, requiresAuth);
+      logOutput(`Test of ${url} ${result ? 'succeeded' : 'failed'}`);
+    }
+    
+    // Override console.log for token-check.js
+    const originalLog = console.log;
+    console.log = function(message, ...args) {
+      originalLog.apply(console, [message, ...args]);
+      
+      // Check if this is a log from our token utility
+      if (typeof message === 'string' && message.includes('%c[TokenCheck]')) {
+        // Extract the actual message without the styling
+        const actualMessage = message.replace('%c[TokenCheck] ', '');
+        logOutput(actualMessage);
+      }
+    };
+  </script>
+</body>
+</html>
