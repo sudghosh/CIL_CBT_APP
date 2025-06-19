@@ -14,8 +14,12 @@ import {
   DialogContent,
   DialogActions,
   CircularProgress,
-  Theme
+  LinearProgress,
+  Theme,
+  Card,
+  CardContent
 } from '@mui/material';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { testsAPI } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
 
@@ -379,31 +383,54 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       console.log('Current question normalized data:', currentQuestion);
     }
   }, [currentQuestionIndex, currentQuestionRaw, displayedQuestions]);
-
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ maxWidth: '900px', mx: 'auto', mb: 4 }}>
       <ErrorAlert error={error} onClose={() => setError(null)} />
 
       {/* Timer and Progress */}
-      <Paper sx={{ p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>          
-        <Typography variant="h6">
-          Question {currentQuestionIndex + 1} of {displayedQuestions.length}
-        </Typography>
-        <Chip
-          label={`Time Left: ${formatTime(timeLeft)}`}
-          color={timeLeft < 300 ? 'error' : 'default'}
-        />
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">
+            Standard Test
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body1">
+              Time Left: {formatTime(timeLeft)}
+            </Typography>
+          </Box>
+        </Box>
+        
+        <Box sx={{ mb: 2 }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={(currentQuestionIndex + 1) / displayedQuestions.length * 100} 
+            sx={{ height: 10, borderRadius: 5 }}
+          />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+            <Typography variant="caption">
+              Question {currentQuestionIndex + 1} of {displayedQuestions.length}
+            </Typography>
+            <Typography variant="caption">Standard Test</Typography>
+          </Box>
+        </Box>
       </Paper>
 
       {/* Question and Options */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="body1" gutterBottom>
-          {currentQuestion.question_text}
-        </Typography>        <RadioGroup
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Question {currentQuestionIndex + 1}
+          </Typography>
+          <Typography variant="body1">
+            {currentQuestion.question_text}
+          </Typography>
+        </Box>
+        
+        <RadioGroup
           value={answers[currentQuestion.question_id] ?? ''}
           onChange={(e) => handleAnswerChange(currentQuestion.question_id, parseInt(e.target.value, 10))}
-        >
-          {(() => {
+        >          {(() => {
             console.log('Rendering RadioGroup with options:', currentQuestion.options);
             
             if (!Array.isArray(currentQuestion.options)) {
@@ -423,7 +450,8 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
                 return null;
               }
               
-              try {                const optionId = option.option_id !== undefined ? option.option_id : index;
+              try {                
+                const optionId = option.option_id !== undefined ? option.option_id : index;
                 const optionOrder = option.option_order !== undefined ? option.option_order : index;
                 // Use a more robust fallback chain for option text
                 const optionText = typeof option === 'string' 
@@ -440,6 +468,7 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
                     value={optionOrder}
                     control={<Radio disabled={isSubmitting || isSavingAnswer} />}
                     label={optionText}
+                    sx={{ mb: 1, display: 'block' }}
                   />
                 );
               } catch (error) {
@@ -450,113 +479,119 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
                     value={index}
                     control={<Radio disabled={true} />}
                     label={`Error loading option ${index + 1}`}
+                    sx={{ mb: 1, display: 'block' }}
                   />
-                );
-              }
+                );              }
             }).filter(Boolean); // Filter out null entries if any
           })()}
         </RadioGroup>
-      </Paper>      {/* Debug info - Only visible in development mode */}
-      {process.env.NODE_ENV === 'development' && (
-        <Paper sx={{ p: 2, mb: 2, backgroundColor: '#f5f5f5' }}>
-          <Typography variant="subtitle2" gutterBottom>Debug Information (dev only)</Typography>
-          <Typography variant="body2" component="pre" sx={{ fontSize: '0.75rem', overflowX: 'auto' }}>
-            {JSON.stringify({
-              questionId: currentQuestion.question_id,
-              optionsCount: currentQuestion.options ? currentQuestion.options.length : 0,
-              optionsType: typeof currentQuestion.options,
-              isOptionsArray: Array.isArray(currentQuestion.options),
-              firstOption: Array.isArray(currentQuestion.options) && currentQuestion.options.length > 0 
-                ? currentQuestion.options[0] : null
-            }, null, 2)}
-          </Typography>
-        </Paper>
-      )}
-      
-      {/* Navigation */}
-      <Grid container spacing={2} justifyContent="space-between">
-        <Grid item>
-          <Button
-            variant="contained"
-            disabled={currentQuestionIndex === 0 || isSubmitting}
-            onClick={() => handleNavigateQuestion(currentQuestionIndex - 1)}
-          >
-            Previous
-          </Button>
-        </Grid>
-        <Grid item>
-          <Button
-            color={markedForReview.has(currentQuestion.question_id) ? 'secondary' : 'primary'}
-            variant="outlined"
-            onClick={() => handleMarkForReview(currentQuestion.question_id)}
-            disabled={isSubmitting}
-          >
-            {markedForReview.has(currentQuestion.question_id)
-              ? 'Unmark for Review'
-              : 'Mark for Review'}
-          </Button>
-        </Grid>
-        <Grid item>
-          {currentQuestionIndex === displayedQuestions.length - 1 ? (
+      </Paper>
+        {/* Navigation */}
+      <Box sx={{ mt: 3 }}>
+        <Grid container spacing={2} justifyContent="space-between">
+          <Grid item>
             <Button
-              variant="contained"
-              color="primary"
-              onClick={() => setShowConfirmSubmit(true)}
+              variant="outlined"
+              disabled={currentQuestionIndex === 0 || isSubmitting}
+              onClick={() => handleNavigateQuestion(currentQuestionIndex - 1)}
+            >
+              Previous
+            </Button>
+          </Grid>
+          <Grid item>
+            <Button
+              color={markedForReview.has(currentQuestion.question_id) ? 'secondary' : 'primary'}
+              variant="outlined"
+              onClick={() => handleMarkForReview(currentQuestion.question_id)}
               disabled={isSubmitting}
             >
-              Submit Test
+              {markedForReview.has(currentQuestion.question_id)
+                ? 'Unmark for Review'
+                : 'Mark for Review'}
             </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={() => handleNavigateQuestion(currentQuestionIndex + 1)}
-              disabled={isSubmitting}
-            >
-              Next
-            </Button>
-          )}
+          </Grid>
+          <Grid item>
+            {currentQuestionIndex === displayedQuestions.length - 1 ? (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => setShowConfirmSubmit(true)}
+                disabled={isSubmitting}
+              >
+                Submit Test
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handleNavigateQuestion(currentQuestionIndex + 1)}
+                disabled={isSubmitting}
+              >
+                Next
+              </Button>
+            )}
+          </Grid>
         </Grid>
-      </Grid>
-
-      {/* Leave Test Button */}
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+      </Box>      {/* Leave Test Button */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2 }}>
         <Button
           variant="outlined"
           color="error"
           onClick={() => setShowConfirmLeave(true)}
           disabled={isSubmitting || isLeaving}
           sx={{ minWidth: '150px' }}
+          startIcon={isLeaving ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
-          Leave Test
+          {isLeaving ? 'Leaving...' : 'Leave Test'}
         </Button>
-      </Box>
-
-      {/* Question Palette */}
-      <Paper sx={{ p: 2, mt: 3 }}>
-        <Typography variant="subtitle1" gutterBottom>
+      </Box>{/* Question Palette */}
+      <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
           Question Palette
         </Typography>
-        <Grid container spacing={1}>
-          {displayedQuestions.map((q: Question, index: number) => (
-            <Grid item key={q.question_id}>
-              <Chip
-                label={index + 1}
-                color={
-                  markedForReview.has(q.question_id)
-                    ? 'secondary'
-                    : answers[q.question_id] !== undefined
-                    ? 'success'
-                    : 'default'
-                }
-                onClick={() => handleNavigateQuestion(index)}
-                sx={{ cursor: 'pointer' }}
-                disabled={isSubmitting}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
+        <Box sx={{ mt: 2 }}>
+          <Grid container spacing={1}>
+            {displayedQuestions.map((q: Question, index: number) => (
+              <Grid item key={q.question_id}>
+                <Chip
+                  label={index + 1}
+                  color={
+                    markedForReview.has(q.question_id)
+                      ? 'secondary'
+                      : answers[q.question_id] !== undefined
+                      ? 'success'
+                      : 'default'
+                  }
+                  onClick={() => handleNavigateQuestion(index)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    fontWeight: currentQuestionIndex === index ? 'bold' : 'normal',
+                    border: currentQuestionIndex === index ? '2px solid' : 'none'
+                  }}
+                  disabled={isSubmitting}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+        
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip size="small" color="success" sx={{ width: 30 }} />
+            <Typography variant="caption">Answered</Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip size="small" color="secondary" sx={{ width: 30 }} />
+            <Typography variant="caption">Marked for Review</Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip size="small" color="default" sx={{ width: 30 }} />
+            <Typography variant="caption">Not Answered</Typography>
+          </Box>
+        </Box>      </Paper>      {/* Debug information section removed */}
+      
       {/* Confirm Submit Dialog */}
       <Dialog 
         open={showConfirmSubmit} 
