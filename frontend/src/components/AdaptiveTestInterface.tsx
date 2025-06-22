@@ -22,6 +22,7 @@ import {
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { testsAPI, api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { shuffleArray, WithOriginalValues } from '../utils/shuffleUtils';
 
 /**
  * Interface for question option data
@@ -31,6 +32,9 @@ interface QuestionOption {
   option_id?: number;
   option_text: string;
   option_order: number;
+  // Added by shuffleArray function:
+  originalIndex?: number;
+  originalPreservedValue?: number;
 }
 
 /**
@@ -64,16 +68,16 @@ interface AdaptiveTestProps {
  * @param props - Component props
  * @returns React component
  */
-export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({ 
+export const AdaptiveTestInterface = ({ 
   attemptId, 
   onComplete,
   adaptiveStrategy,
   testDuration = 60 // Default to 60 minutes if not specified
-}) => {
+}: AdaptiveTestProps): JSX.Element => {
   // Current question state
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
@@ -97,18 +101,37 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
       if (currentQuestion && selectedOption !== null) {
         const timeTakenSeconds = Math.floor((Date.now() - questionStartTime) / 1000);
         const questionId = currentQuestion.id || currentQuestion.question_id;
+        
         if (!questionId) {
           console.error('Question ID missing when submitting test:', currentQuestion);
         } else {
           try {
             console.log(`Submitting final answer before ending test for question ${questionId}`);
-            // Submit answer but ignore any errors (test might already be complete)
-            await testsAPI.submitAnswerAndGetNextQuestion(
-              attemptId,
-              questionId,
-              selectedOption,
-              timeTakenSeconds
-            ).catch(err => console.warn('Error submitting final answer, continuing anyway:', err));
+            
+            // Convert string selectedOption to number
+            const selectedOptionIndex = parseInt(selectedOption, 10);
+            
+            if (!isNaN(selectedOptionIndex)) {
+              // Get the original option index if available
+              let originalOptionIndex = selectedOptionIndex;
+              
+              const selectedOptionObject = currentQuestion.options[selectedOptionIndex];
+              if (selectedOptionObject && typeof selectedOptionObject === 'object') {
+                if ('originalPreservedValue' in selectedOptionObject) {
+                  originalOptionIndex = (selectedOptionObject as any).originalPreservedValue;
+                } else if ('option_order' in selectedOptionObject) {
+                  originalOptionIndex = (selectedOptionObject as any).option_order;
+                }
+              }
+              
+              // Submit answer but ignore any errors (test might already be complete)
+              await testsAPI.submitAnswerAndGetNextQuestion(
+                attemptId,
+                questionId,
+                originalOptionIndex,
+                timeTakenSeconds
+              ).catch(err => console.warn('Error submitting final answer, continuing anyway:', err));
+            }
           } catch (submitErr) {
             console.warn('Error in final answer submission, proceeding to finish test anyway:', submitErr);
           }
@@ -291,18 +314,34 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
               questionData.options = extractedOptions;
             }
           }
-          
-          // Normalize question format
-          const normalizedQuestion = normalizeQuestionFormat(questionData);
-          
-          console.log("Normalized question:", {
-            id: normalizedQuestion.id,
-            text: normalizedQuestion.question_text,
-            options: normalizedQuestion.options
-          });
-          
-          setCurrentQuestion(normalizedQuestion);
-          setTestProgress(5); // Start progress at 5%
+              // Normalize question format
+        const normalizedQuestion = normalizeQuestionFormat(questionData);
+          // Shuffle the options
+        if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options) && normalizedQuestion.options.length > 1) {
+          // Check if options are in object format (not string[])
+          if (typeof normalizedQuestion.options[0] === 'object') {
+            normalizedQuestion.options = shuffleArray(normalizedQuestion.options as QuestionOption[], 'option_order');
+            console.log("Options have been randomized");
+          } else {
+            console.log("Options are in string format, converting to objects before shuffling");
+            // Convert string options to objects, then shuffle
+            const objectOptions = (normalizedQuestion.options as string[]).map((text, idx) => ({
+              option_text: text,
+              option_order: idx,
+              option_id: idx
+            }));
+            normalizedQuestion.options = shuffleArray(objectOptions, 'option_order');
+          }
+        }
+        
+        console.log("Normalized question with randomized options:", {
+          id: normalizedQuestion.id,
+          text: normalizedQuestion.question_text,
+          options: normalizedQuestion.options
+        });
+        
+        setCurrentQuestion(normalizedQuestion);
+        setTestProgress(5); // Start progress at 5%
         } else {
           throw new Error('Could not retrieve question from any endpoint');
         }
@@ -377,8 +416,7 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
   };
     /**
    * Submit the answer to the current question and get the next question
-   */
-  const submitAnswer = async () => {
+   */  const submitAnswer = async () => {
     if (!currentQuestion || selectedOption === null) {
       setError('Please select an answer before proceeding');
       return;
@@ -396,24 +434,54 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
     try {
       setIsSubmitting(true);
       setError(null);
+        
+      // Convert string selectedOption to number for array indexing
+      const selectedOptionIndex = parseInt(selectedOption, 10);
+      if (isNaN(selectedOptionIndex)) {
+        throw new Error('Invalid option selection');
+      }
+      
+      // Get the selected option object, handling both string[] and object[] formats
+      const selectedOptionObject = currentQuestion.options[selectedOptionIndex];
+      if (!selectedOptionObject) {
+        throw new Error(`Selected option at index ${selectedOptionIndex} not found in question ${questionId}`);
+      }
+      
+      // Get the original option_order or index value that should be sent to the backend
+      let originalOptionIndex = selectedOptionIndex; // Default fallback
+      
+      if (typeof selectedOptionObject === 'object') {
+        if ('originalPreservedValue' in selectedOptionObject) {
+          // Get original value that was stored during shuffling
+          originalOptionIndex = (selectedOptionObject as any).originalPreservedValue;
+          console.log(`Using preserved original option index ${originalOptionIndex} for display index ${selectedOptionIndex}`);
+        } else if ('option_order' in selectedOptionObject) {
+          // Use option_order as fallback 
+          originalOptionIndex = (selectedOptionObject as any).option_order;
+          console.log(`Using option_order ${originalOptionIndex} as original index for display index ${selectedOptionIndex}`);
+        }
+      } else {
+        // If it's a string option, just use the selectedOption index directly
+        console.log(`Selected option is a string, using index ${selectedOptionIndex} as-is`);
+      }
       
       // Calculate time taken to answer
       const timeTakenSeconds = Math.floor((Date.now() - questionStartTime) / 1000);
       
       // Submit answer and get next question
-      console.log(`Submitting answer for question ${questionId}: option ${selectedOption}, time ${timeTakenSeconds}s`);
+      console.log(`Submitting answer for question ${questionId}: displayed option ${selectedOptionIndex}, original index ${originalOptionIndex}, time ${timeTakenSeconds}s`);
       console.log(`POST /tests/${attemptId}/next_question with payload:`, {
         question_id: questionId,
-        selected_option_id: selectedOption,
+        selected_option_id: originalOptionIndex, // Use the original index, not the displayed one
         time_taken_seconds: timeTakenSeconds
       });
       
       const response = await testsAPI.submitAnswerAndGetNextQuestion(
         attemptId,
         questionId,
-        selectedOption,
+        originalOptionIndex, // Use the original index, not the displayed one
         timeTakenSeconds
-      );      // Get questions_answered and max_questions from the response if available
+      );// Get questions_answered and max_questions from the response if available
       const newQuestionsAnswered = response.questions_answered || (questionsAnswered + 1);
       const newMaxQuestions = response.max_questions || maxQuestions;
       
@@ -466,9 +534,25 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
         } else {
           console.warn("Next question has no options:", response.next_question);
         }
-        
-        // Normalize question format
+          // Normalize question format
         const normalizedQuestion = normalizeQuestionFormat(response.next_question);
+          // Shuffle the options for the next question
+        if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options) && normalizedQuestion.options.length > 1) {
+          // Check if options are in object format (not string[])
+          if (typeof normalizedQuestion.options[0] === 'object') {
+            normalizedQuestion.options = shuffleArray(normalizedQuestion.options as QuestionOption[], 'option_order');
+            console.log("Options have been randomized for next question");
+          } else {
+            console.log("Options are in string format, converting to objects before shuffling");
+            // Convert string options to objects, then shuffle
+            const objectOptions = (normalizedQuestion.options as string[]).map((text, idx) => ({
+              option_text: text,
+              option_order: idx,
+              option_id: idx
+            }));
+            normalizedQuestion.options = shuffleArray(objectOptions, 'option_order');
+          }
+        }
         
         setCurrentQuestion(normalizedQuestion);
         setSelectedOption(null); // Reset selection for the new question
@@ -615,7 +699,7 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
               {/* Answer Options */}
             <RadioGroup
               value={selectedOption}
-              onChange={(e) => setSelectedOption(Number(e.target.value))}
+              onChange={(e) => setSelectedOption(e.target.value)}
             >
               {(() => {
                 // Debug options data
@@ -635,7 +719,7 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
                     return (currentQuestion.options as string[]).map((optionText, index) => (
                       <FormControlLabel
                         key={`option-${index}`}
-                        value={index}
+                        value={String(index)}
                         control={<Radio disabled={isSubmitting} />}
                         label={optionText || `Option ${index + 1}`}
                         sx={{ mb: 1 }}
@@ -646,7 +730,7 @@ export const AdaptiveTestInterface: React.FC<AdaptiveTestProps> = ({
                     return (currentQuestion.options as QuestionOption[]).map((option, index) => (
                       <FormControlLabel
                         key={option.id || option.option_id || `option-${index}`}
-                        value={option.id || option.option_id || option.option_order || index}
+                        value={String(index)}
                         control={<Radio disabled={isSubmitting} />}
                         label={option.option_text || `Option ${index + 1}`}
                         sx={{ mb: 1 }}

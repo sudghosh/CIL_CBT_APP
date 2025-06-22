@@ -56,6 +56,26 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
         avg_time_per_question = total_time_seconds / answered_questions if answered_questions > 0 else 0
         accuracy = (correct_answers / answered_questions) * 100 if answered_questions > 0 else 0
         
+        # Update dynamic question difficulty for incorrect answers
+        for answer in answers:
+            if answer.selected_option_index is not None and answer.is_correct is False:
+                # Get the question
+                question = db.query(Question).filter(Question.question_id == answer.question_id).first()
+                if question:
+                    # Increment the numeric difficulty by 1, up to a maximum of 10
+                    question.numeric_difficulty = min(10, question.numeric_difficulty + 1)
+                    
+                    # Update the string difficulty level based on the numeric value
+                    if 0 <= question.numeric_difficulty <= 3:
+                        question.difficulty_level = 'Easy'
+                    elif 4 <= question.numeric_difficulty <= 6:
+                        question.difficulty_level = 'Medium'
+                    else:  # 7-10
+                        question.difficulty_level = 'Hard'
+                    
+                    db.add(question)
+                    logger.info(f"Updated difficulty for question {question.question_id} to {question.numeric_difficulty} ({question.difficulty_level})")
+        
         # Update UserOverallSummary
         user_summary = db.query(UserOverallSummary).filter(
             UserOverallSummary.user_id == user_id

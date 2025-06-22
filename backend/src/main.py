@@ -12,7 +12,7 @@ import logging
 import os
 import traceback
 from datetime import datetime
-from .routers import auth, questions, tests, papers, admin, start_route
+from .routers import auth, questions, tests, papers, admin, start_route, performance
 from .database.database import engine
 from .database.models import Base
 from .database.seed_data import seed_database
@@ -155,6 +155,7 @@ app.include_router(questions.router)
 app.include_router(tests.router)
 app.include_router(admin.router)
 app.include_router(start_route.router)  # Include the new start route for test starting
+app.include_router(performance.router)  # Include the performance router for dashboard data
 # Add new routers for section and subsection management
 from .routers import sections, subsections
 

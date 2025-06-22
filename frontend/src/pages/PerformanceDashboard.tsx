@@ -54,6 +54,10 @@ interface OverallSummary {
   medium_questions_accuracy: number;
   hard_questions_accuracy: number;
   last_updated: string;
+  adaptive_tests_count: number;
+  non_adaptive_tests_count: number;
+  adaptive_avg_score: number;
+  non_adaptive_avg_score: number;
 }
 
 /**
@@ -202,8 +206,7 @@ export const PerformanceDashboard: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Performance Dashboard</Typography>
-      
-      {/* Overall Performance Summary */}
+        {/* Overall Performance Summary */}
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" gutterBottom>Overall Performance</Typography>
         
@@ -248,6 +251,65 @@ export const PerformanceDashboard: React.FC = () => {
             </Card>
           </Grid>
         </Grid>
+        
+        {/* Adaptive vs Non-adaptive test statistics */}
+        {((overallData?.adaptive_tests_count || 0) > 0 || (overallData?.non_adaptive_tests_count || 0) > 0) && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+              Adaptive vs Standard Tests
+            </Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ height: '100%', bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Adaptive Tests</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Tests Taken</Typography>
+                        <Typography variant="h6">{overallData?.adaptive_tests_count || 0}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Average Score</Typography>
+                        <Typography variant="h6">
+                          {overallData?.adaptive_avg_score !== undefined ? 
+                            (typeof overallData.adaptive_avg_score === 'number' 
+                              ? overallData.adaptive_avg_score.toFixed(1) 
+                              : overallData.adaptive_avg_score) 
+                            : 0}%
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Standard Tests</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Tests Taken</Typography>
+                        <Typography variant="h6">{overallData?.non_adaptive_tests_count || 0}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Average Score</Typography>
+                        <Typography variant="h6">
+                          {overallData?.non_adaptive_avg_score !== undefined ? 
+                            (typeof overallData.non_adaptive_avg_score === 'number' 
+                              ? overallData.non_adaptive_avg_score.toFixed(1) 
+                              : overallData.non_adaptive_avg_score) 
+                            : 0}%
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
       </Paper>
       
       {/* Performance Analysis Tabs */}

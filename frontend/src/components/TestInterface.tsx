@@ -22,11 +22,15 @@ import {
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { testsAPI } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { shuffleArray, shuffleOptionsInQuestions } from '../utils/shuffleUtils';
 
 interface QuestionOption {
   option_id: number;
   option_text: string;
   option_order: number;
+  // Added by shuffleArray function:
+  originalIndex?: number;
+  originalPreservedValue?: number;
 }
 
 interface Question {
@@ -129,7 +133,8 @@ const normalizeQuestionFormat = (question: Question): Question => {
 
 export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onComplete, testDuration = 60 }): ReactElement => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
+  // Store answers as strings to match RadioGroup value expectations
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   // Get duration from props instead of hardcoding
   const [timeLeft, setTimeLeft] = useState<number>(0); // Initialize to 0, will be set based on props
@@ -140,6 +145,9 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
   const [isSavingAnswer, setIsSavingAnswer] = useState<boolean>(false);
   const [isLeaving, setIsLeaving] = useState<boolean>(false);  // Filter questions if needed
   const [displayedQuestions, setDisplayedQuestions] = useState<Question[]>(questions || []);
+  // Add a state to track the current question with shuffled options
+  const [currentShuffledQuestion, setCurrentShuffledQuestion] = useState<Question | null>(null);
+
   // Effect to handle filtering questions if needed based on section selection
   useEffect(() => {
     if (!questions || questions.length === 0) {
@@ -195,19 +203,24 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
           };
         }
       });
+        // NEW: Randomize the options for each question, preserving original option_order
+      const questionsWithRandomizedOptions = shuffleOptionsInQuestions(normalizedQuestions);
+      console.log('Options have been randomized for all questions');
       
       // Log the normalized version of the first question
-      if (normalizedQuestions.length > 0) {
-        console.log('First question after normalization:', {
-          id: normalizedQuestions[0].question_id,
-          optionsLength: normalizedQuestions[0].options.length,
-          sampleOption: normalizedQuestions[0].options[0],
-          allOptions: normalizedQuestions[0].options
+      if (questionsWithRandomizedOptions.length > 0) {
+        const firstQuestion = questionsWithRandomizedOptions[0];
+        console.log('First question after normalization and randomization:', {
+          id: firstQuestion.question_id,
+          optionsLength: firstQuestion.options.length,
+          sampleOption: firstQuestion.options[0],
+          allOptions: firstQuestion.options
         });
       }
       
-      // Update the state with normalized questions
-      setDisplayedQuestions(normalizedQuestions);
+      // Update the state with normalized and randomized questions
+      // Cast to Question[] as we've verified the structure through normalization
+      setDisplayedQuestions(questionsWithRandomizedOptions as Question[]);
     } catch (error) {
       console.error('Error normalizing questions:', error);
       setError('Error processing questions. Please try refreshing the page.');
@@ -286,25 +299,57 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       isActive = false;
       clearInterval(timer);
     };
-  }, [handleSubmitTest]);
-
-  const handleAnswerChange = async (questionId: number, optionIndex: number) => {
+  }, [handleSubmitTest]);  const handleAnswerChange = async (questionId: number, optionIndex: number) => {
     if (isSubmitting || isSavingAnswer) return;
     
     try {
       setIsSavingAnswer(true);
       setError(null);
       
-      // Optimistically update UI
-      setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+      // Use the shuffled question if available (which contains the current display state)
+      // or fall back to finding the question in the original questions array
+      const questionForSubmission = 
+        (currentShuffledQuestion && currentShuffledQuestion.question_id === questionId)
+          ? currentShuffledQuestion
+          : displayedQuestions.find(q => q.question_id === questionId);
+          
+      if (!questionForSubmission) {
+        throw new Error(`Question with ID ${questionId} not found`);
+      }
+      
+      // Find the selected option to get its original order/index
+      const selectedOption = questionForSubmission.options[optionIndex];
+      if (!selectedOption) {
+        throw new Error(`Option at index ${optionIndex} not found in question ${questionId}`);
+      }
+      
+      // Get the original option_order value
+      // This is what was stored in the backend, so we need to use this for submission
+      let originalOptionIndex = optionIndex; // Default fallback
+      
+      if (typeof selectedOption === 'object') {
+        if ('originalPreservedValue' in selectedOption) {
+          // Get original value that was stored during shuffling
+          originalOptionIndex = selectedOption.originalPreservedValue as number;
+          console.log(`Using preserved original option index ${originalOptionIndex} for display index ${optionIndex}`);
+        } else if ('option_order' in selectedOption) {
+          // Use option_order as fallback 
+          originalOptionIndex = selectedOption.option_order as number;
+          console.log(`Using option_order ${originalOptionIndex} as original index for display index ${optionIndex}`);
+        }
+      }
+      
+      // Optimistically update UI - store as string to match RadioGroup expectations
+      setAnswers((prev) => ({ ...prev, [questionId]: String(optionIndex) }));
       
       const submission: AnswerSubmission = {
         question_id: questionId,
-        selected_option_index: optionIndex,
+        selected_option_index: originalOptionIndex, // Use the original index, not the displayed one
         time_taken_seconds: testDuration * 60 - timeLeft,
         is_marked_for_review: markedForReview.has(questionId)
       };
 
+      console.log(`Submitting answer for question ${questionId}: displayed index ${optionIndex}, original index ${originalOptionIndex}`);
       await testsAPI.submitAnswer(attemptId, submission);
     } catch (err) {
       setError('Failed to save answer. Please try again.');
@@ -356,11 +401,18 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
   const handleNavigateQuestion = (index: number) => {
     if (index < 0 || index >= displayedQuestions.length || isSubmitting) return;
     setCurrentQuestionIndex(index);
-  };  // Make sure we have a valid current question, use default if not
+  };  // Get the current question - prioritize the shuffled version if available
   const currentQuestionRaw = displayedQuestions[currentQuestionIndex];
+  
+  // Get the current question to display - either the shuffled version or fallback to original
   const currentQuestion = (() => {
+    // First priority: Use shuffled question if available
+    if (currentShuffledQuestion) {
+      return currentShuffledQuestion;
+    }
+    
+    // Second priority: Use normalized version of raw question
     try {
-      // Try to normalize the current question
       if (currentQuestionRaw) {
         return normalizeQuestionFormat(currentQuestionRaw);
       }
@@ -378,11 +430,86 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
 
   // Extra debug logging for current question
   useEffect(() => {
-    if (currentQuestionRaw) {
-      console.log('Current question raw data:', currentQuestionRaw);
-      console.log('Current question normalized data:', currentQuestion);
+    if (currentQuestion) {
+      console.log('Current question being displayed:', {
+        id: currentQuestion.question_id,
+        text: currentQuestion.question_text?.substring(0, 50) + '...',
+        optionsShuffled: currentQuestion === currentShuffledQuestion ? 'Yes' : 'No',
+        optionsCount: currentQuestion.options?.length || 0
+      });
     }
-  }, [currentQuestionIndex, currentQuestionRaw, displayedQuestions]);
+  }, [currentQuestionIndex, currentQuestion, currentShuffledQuestion]);
+  // Effect to handle changing questions with shuffled options
+  // This ensures that options are randomized every time a different question is displayed
+  // Original indices are preserved for correct answer submission to the backend
+  useEffect(() => {
+    if (displayedQuestions.length === 0 || currentQuestionIndex < 0 || currentQuestionIndex >= displayedQuestions.length) {
+      setCurrentShuffledQuestion(null);
+      return;
+    }
+    
+    try {
+      // Get the current question
+      const currentQuestion = displayedQuestions[currentQuestionIndex];
+      
+      if (!currentQuestion) {
+        console.warn(`No question found at index ${currentQuestionIndex}`);
+        setCurrentShuffledQuestion(null);
+        return;
+      }
+      
+      if (!currentQuestion.options) {
+        console.warn(`Question at index ${currentQuestionIndex} has no options`);
+        // Normalize the question without shuffling
+        setCurrentShuffledQuestion({
+          ...currentQuestion,
+          options: []
+        });
+        return;
+      }
+      
+      // Create a deep clone of the question to avoid mutating the original
+      let questionCopy;
+      try {
+        questionCopy = JSON.parse(JSON.stringify(currentQuestion));
+      } catch (jsonError) {
+        console.error('Error creating deep copy of current question:', jsonError);
+        questionCopy = {...currentQuestion};
+      }
+      
+      // Make sure options is an array before shuffling
+      if (!Array.isArray(questionCopy.options)) {
+        console.warn('Options is not an array, normalizing before shuffle');
+        questionCopy.options = [];
+      }
+      
+      // Shuffle options for current question only
+      // This adds originalIndex and originalPreservedValue properties to track the original positions
+      const shuffledOptions = shuffleArray([...questionCopy.options], 'option_order');
+      
+      // Create new question object with shuffled options
+      const questionWithShuffledOptions = {
+        ...questionCopy,
+        options: shuffledOptions
+      };
+      
+      // Log shuffling for debugging
+      console.log(`Shuffled options for question ${currentQuestionIndex+1}/${displayedQuestions.length}`);
+      
+      // Update current question with shuffled options
+      setCurrentShuffledQuestion(questionWithShuffledOptions);
+    } catch (error) {
+      console.error('Error shuffling options for current question:', error);
+      // Fallback to unshuffled question
+      const fallbackQuestion = displayedQuestions[currentQuestionIndex] || {
+        question_id: 0,
+        question_text: 'Error loading question',
+        options: []
+      };
+      setCurrentShuffledQuestion(fallbackQuestion);
+    }
+  }, [displayedQuestions, currentQuestionIndex]);
+
   return (
     <Box sx={{ maxWidth: '900px', mx: 'auto', mb: 4 }}>
       <ErrorAlert error={error} onClose={() => setError(null)} />
@@ -426,11 +553,16 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
             {currentQuestion.question_text}
           </Typography>
         </Box>
-        
-        <RadioGroup
+          <RadioGroup
           value={answers[currentQuestion.question_id] ?? ''}
-          onChange={(e) => handleAnswerChange(currentQuestion.question_id, parseInt(e.target.value, 10))}
-        >          {(() => {
+          onChange={(e) => {
+            // Parse the option index back to a number for internal processing
+            const optionIndex = parseInt(e.target.value, 10);
+            if (!isNaN(optionIndex)) {
+              handleAnswerChange(currentQuestion.question_id, optionIndex);
+            }
+          }}
+        >{(() => {
             console.log('Rendering RadioGroup with options:', currentQuestion.options);
             
             if (!Array.isArray(currentQuestion.options)) {
@@ -449,23 +581,31 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
                 console.error(`Option at index ${index} for question ${currentQuestion.question_id} is null/undefined`);
                 return null;
               }
-              
-              try {                
-                const optionId = option.option_id !== undefined ? option.option_id : index;
-                const optionOrder = option.option_order !== undefined ? option.option_order : index;
-                // Use a more robust fallback chain for option text
-                const optionText = typeof option === 'string' 
-                  ? option 
-                  : option.option_text || (option as any).text || `Option ${index + 1}`;
+                try {
+                // Handle both string and object option formats with proper type checking
+                let optionId: number;
+                let optionOrder: number;
+                let optionText: string;
+                
+                if (typeof option === 'string') {
+                  // For string options, use index as id and order
+                  optionId = index;
+                  optionOrder = index;
+                  optionText = option;
+                } else {
+                  // For object options, extract properties with fallbacks
+                  optionId = option.option_id !== undefined ? option.option_id : index;
+                  optionOrder = option.option_order !== undefined ? option.option_order : index;
+                  optionText = option.option_text || (option as any).text || `Option ${index + 1}`;
+                }
                 
                 // Create a truly unique key using both question ID and option ID
                 const uniqueKey = `option-${currentQuestion.question_id}-${optionId}`;
                 console.log(`Option ${index}:`, { optionId, optionText, uniqueKey });
-                
-                return (
+                  return (
                   <FormControlLabel
                     key={uniqueKey}
-                    value={optionOrder}
+                    value={String(index)} // Use display index as value, convert to string for RadioGroup
                     control={<Radio disabled={isSubmitting || isSavingAnswer} />}
                     label={optionText}
                     sx={{ mb: 1, display: 'block' }}
