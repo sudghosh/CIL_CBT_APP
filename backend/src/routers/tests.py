@@ -80,6 +80,7 @@ class TestAnswerResponse(BaseModel):
     score: Optional[float]
     weighted_score: Optional[float]
     answers: List[TestAnswerDetail]
+    is_adaptive: bool = False  # Include the adaptive flag
 
     class Config:
         from_attributes = True
@@ -134,6 +135,7 @@ class TestAttemptResponse(BaseModel):
     status: TestStatusEnum
     score: Optional[float] = Field(None, ge=0, le=100)
     weighted_score: Optional[float] = Field(None, ge=0, le=100)
+    is_adaptive: bool = False  # Include the adaptive flag
 
     class Config:
         from_attributes = True
@@ -951,7 +953,25 @@ async def get_templates(db: Session = Depends(get_db), current_user: User = Depe
 async def get_attempts(db: Session = Depends(get_db), current_user: User = Depends(verify_token)):
     try:
         attempts = db.query(TestAttempt).filter(TestAttempt.user_id == current_user.user_id).all()
-        return attempts
+        
+        # Add is_adaptive flag to each attempt based on whether adaptive_strategy_chosen exists
+        result = []
+        for attempt in attempts:
+            attempt_dict = {
+                "attempt_id": attempt.attempt_id,
+                "test_type": attempt.test_type,
+                "start_time": attempt.start_time,
+                "end_time": attempt.end_time,
+                "duration_minutes": attempt.duration_minutes,
+                "total_allotted_duration_minutes": attempt.total_allotted_duration_minutes,
+                "status": attempt.status,
+                "score": attempt.score,
+                "weighted_score": attempt.weighted_score,
+                "is_adaptive": bool(attempt.adaptive_strategy_chosen)  # True if adaptive_strategy_chosen has a value
+            }
+            result.append(attempt_dict)
+            
+        return result
     except Exception as e:
         logger.error(f"Error getting attempts: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve attempts")
@@ -1095,8 +1115,7 @@ async def get_attempt_details(
                     time_taken_seconds=answer.time_taken_seconds
                 )
                 answer_details.append(detail)
-        
-        # Create response
+          # Create response
         response = TestAnswerResponse(
             attempt_id=attempt.attempt_id,
             test_type=attempt.test_type,
@@ -1105,7 +1124,8 @@ async def get_attempt_details(
             end_time=attempt.end_time,
             score=attempt.score,
             weighted_score=attempt.weighted_score,
-            answers=answer_details
+            answers=answer_details,
+            is_adaptive=bool(attempt.adaptive_strategy_chosen)  # True if adaptive_strategy_chosen has a value
         )
         
         return response

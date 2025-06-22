@@ -100,6 +100,7 @@ class Question(Base):
     subsection_id = Column(Integer, ForeignKey("subsections.subsection_id"))
     default_difficulty_level = Column(String, default='Easy')
     difficulty_level = Column(String, nullable=False, default="Medium")  # e.g., 'Easy', 'Medium', 'Hard'
+    numeric_difficulty = Column(Integer, nullable=False, default=5)  # Scale from 0-10 (0-3: Easy, 4-6: Medium, 7-10: Hard)
     community_difficulty_score = Column(Float, default=0.0)
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -123,6 +124,12 @@ class Question(Base):
     def validate_difficulty_level(self, key, value):
         if value not in ('Easy', 'Medium', 'Hard'):
             raise ValueError("Invalid difficulty level")
+        return value
+        
+    @validates('numeric_difficulty')
+    def validate_numeric_difficulty(self, key, value):
+        if value < 0 or value > 10:
+            raise ValueError("Numeric difficulty must be between 0 and 10")
         return value
 
 class QuestionOption(Base):
