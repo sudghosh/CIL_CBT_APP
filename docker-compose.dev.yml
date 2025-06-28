@@ -46,8 +46,32 @@ services:
       retries: 5
       start_period: 10s
     logging: *default-logging
-    # Removed memory limits to allow Docker to allocate as needed
-    command: sh -c "env | grep POSTGRES_PASSWORD && env | grep POSTGRES_USER && env | grep POSTGRES_DB && /usr/local/bin/docker-entrypoint.sh postgres"
+    # Memory optimization for WSL constraints
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    command: >
+      sh -c "
+        echo 'PostgreSQL Environment Variables:' &&
+        env | grep POSTGRES_PASSWORD &&
+        env | grep POSTGRES_USER &&
+        env | grep POSTGRES_DB &&
+        /usr/local/bin/docker-entrypoint.sh postgres
+          -c shared_buffers=128MB
+          -c effective_cache_size=256MB
+          -c maintenance_work_mem=32MB
+          -c checkpoint_completion_target=0.9
+          -c wal_buffers=8MB
+          -c default_statistics_target=100
+          -c random_page_cost=1.1
+          -c effective_io_concurrency=200
+          -c work_mem=2MB
+          -c min_wal_size=1GB
+          -c max_wal_size=4GB
+      "
 
   backend:
     build:
@@ -90,12 +114,14 @@ services:
       retries: 3
       start_period: 10s
     logging: *default-logging
-    # Add memory limit to prevent excessive memory usage
+    # Optimized memory settings for WSL constraints
     deploy:
       resources:
         limits:
-          memory: 1G
-    command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python /app/init_db.py && uvicorn src.main:app --host 0.0.0.0 --port 8000"
+          memory: 800M
+        reservations:
+          memory: 400M
+    command: sh -c "echo 'Backend Environment Variables:' && env | grep POSTGRES_PASSWORD && env | grep DATABASE_URL && python -c 'import gc; gc.enable(); gc.set_threshold(100, 5, 5)' && python /app/init_db.py && PYTHONUNBUFFERED=1 PYTHONGC=1 uvicorn src.main:app --host 0.0.0.0 --port 8000 --limit-concurrency 8 --timeout-keep-alive 5 --workers 1"
 
   frontend:
     build:
@@ -115,21 +141,26 @@ services:
       - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING}
       # Memory optimization settings
       - GENERATE_SOURCEMAP=false
-      - NODE_OPTIONS=--max_old_space_size=1536
+      - NODE_OPTIONS=--max_old_space_size=1024
+      - REACT_APP_STRICT_MODE=false
+      - WDS_SOCKET_PORT=0
     networks:
       - cil-network
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 60s
+    # Add memory limit for 8GB RAM system
     deploy:
       resources:
         limits:
           memory: 2G
+        reservations:
+          memory: 1G
     logging: *default-logging
 
 volumes:

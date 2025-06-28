@@ -28,8 +28,8 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy source files
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application with proper handling of TypeScript files
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Development stage
 FROM node:18-alpine AS development
@@ -39,11 +39,15 @@ WORKDIR /app
 RUN addgroup -g 1001 appgroup && \
     adduser -D -u 1001 -G appgroup appuser
 
-# Set environment variables
+# Set environment variables with optimized memory settings
 ENV NODE_ENV=development \
     WATCHPACK_POLLING=true \
     PATH=/app/node_modules/.bin:$PATH \
-    CI=false
+    CI=false \
+    # Memory optimization settings
+    GENERATE_SOURCEMAP=false \
+    INLINE_RUNTIME_CHUNK=false \
+    SKIP_PREFLIGHT_CHECK=true
 
 # Copy package files with correct ownership
 COPY --chown=appuser:appgroup package*.json ./
@@ -61,8 +65,8 @@ COPY --chown=appuser:appgroup . .
 USER appuser
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD wget -q -O - http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=5 \
+    CMD wget -q -O - http://localhost:3000 || exit 1
 
 # Expose port
 EXPOSE 3000
@@ -91,8 +95,8 @@ RUN chmod -R 755 /usr/share/nginx/html
 USER appuser
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=5 \
+    CMD curl -f http://localhost:3000 || exit 1
 
 # Expose port
 EXPOSE 3000

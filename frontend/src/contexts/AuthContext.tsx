@@ -3,9 +3,8 @@ import { authAPI } from '../services/api';
 import { logError } from '../utils/errorHandler';
 import { isTokenExpired } from '../utils/cacheManager';
 import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
-import { validateToken, getUserFromToken } from '../utils/tokenUtils';
 import { cacheAuthState } from '../utils/authCache';
-import { syncAuthState, forceAdminStatusForDevMode } from '../utils/syncAuthState';
+import { markLoginFlowStart, markLoginFlowEnd } from '../utils/tokenMonitor';
 
 interface User {
   user_id: number;
@@ -22,6 +21,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (tokenInfo: { token: string }) => Promise<void>;
+  developmentLogin: () => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
   clearError: () => void;
@@ -42,73 +42,48 @@ const mockUser: User = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Synchronous dev mode user setup for initial state only
-  const devToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const isDev = isDevMode() && devToken && isDevToken(devToken);
-  const [user, setUser] = useState<User | null>(isDev ? { ...mockUser, isVerifiedAdmin: true } : null);
-  const [loading, setLoading] = useState(isDev ? false : true);
+  // Initialize state without auto-login - always start at login page
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(isDev ? true : false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const clearError = () => setError(null);
 
   useEffect(() => {
-    if (isDev) {
-      // Ensure admin cache is set for dev mode
-      forceAdminStatusForDevMode();
-      setUser({ ...mockUser, isVerifiedAdmin: true });
-      setLoading(false);
-      setAuthChecked(true);
-      return;
-    }
-    // Handle session initialization on mount  
+    // Initialize auth state - always start at login page (no auto-session restoration)
     let isMounted = true;
+    
     const initializeAuth = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          if (isMounted) {
-            setLoading(false);
-            setAuthChecked(true);
-          }
-          return;
-        }
-        try {
-          const response = await authAPI.getCurrentUser();
-          if (isMounted) {
-            setUser(response.data as User);
-            setError(null);
-          }
-        } catch (err: any) {
-          if (err.status === 401 || err.response?.status === 401) {
-            localStorage.removeItem('token');
-          } else {
-            if (isMounted) {
-              setError(`Error initializing session: ${err.message}`);
-            }
-          }
-          if (isMounted) {
-            setUser(null);
-          }
-        } finally {
-          if (isMounted) {
-            setLoading(false);
-            setAuthChecked(true);
-          }
-        }
-      } catch (error) {
-        if (isMounted) {
-          setLoading(false);
-          setAuthChecked(true);
-        }
+      if (isMounted) {
+        console.log('[AuthContext] Initializing auth context - no auto-login');
+        
+        // Clear any existing authentication state to ensure we start at login page
+        localStorage.removeItem('token');
+        sessionStorage.removeItem('auth_cache');
+        sessionStorage.removeItem('admin_check');
+        sessionStorage.removeItem('user_cache');
+        sessionStorage.removeItem('lastAuthCheck');
+        sessionStorage.removeItem('lastAdminCheck');
+        
+        // Always start with no user logged in
+        setUser(null);
+        setError(null);
+        setLoading(false);
+        setAuthChecked(true);
+        
+        console.log('[AuthContext] Initialization complete - user must explicitly log in');
       }
     };
-    if (!isDev) initializeAuth();
+
+    initializeAuth();
     return () => { isMounted = false; };
-  }, [isDev]);
+  }, []);
   
   // Handle Google login
   const login = async (tokenInfo: { token: string }) => {
+    markLoginFlowStart(); // Prevent token monitor interference
+    
     try {
       setLoading(true);
       setError(null);
@@ -120,20 +95,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Attempting login with token:', tokenInfo.token ? 'Token provided' : 'No token');
       
-      // Handle development token
+      // Check token before making API request
+      if (!tokenInfo.token) {
+        throw new Error("No token received");
+      }
+
+      // Handle legacy development token (only for dev-token-* format)
       if (isDevToken(tokenInfo.token)) {
-        console.log('Using development login');
-        // Always use mockUser for dev mode
+        console.log('Using development login with dev token');
         localStorage.setItem('token', DEV_TOKEN);
         console.log('[DEBUG] Dev token set in localStorage:', localStorage.getItem('token'));
         setUser(mockUser);
-        // Cache the mock user data
         cacheAuthState({...mockUser, isVerifiedAdmin: true});
-        // Record authentication check timestamps
         sessionStorage.setItem('lastAuthCheck', Date.now().toString());
         sessionStorage.setItem('lastAdminCheck', Date.now().toString());
         setError(null);
-        // Create a custom event to notify that authentication is complete
         const authEvent = new CustomEvent('auth-status-changed', {
           detail: { authenticated: true, user: mockUser }
         });
@@ -141,12 +117,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Check token before making API request
-      if (!tokenInfo.token) {
-        throw new Error("No Google token received");
-      }
-
-      // Execute the Google login call
+      // For all other tokens (including Google Auth JWT tokens), validate with backend
+      console.log('Validating token with backend API');
       const response = await authAPI.googleLogin(tokenInfo);
       console.log('Login response:', response.data);
       
@@ -179,25 +151,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw err;
     } finally {
       setLoading(false);
+      markLoginFlowEnd(); // Re-enable token monitor
+    }
+  };
+
+  // Development login function - only available in dev mode
+  const developmentLogin = async () => {
+    if (!isDevMode()) {
+      throw new Error('Development login is only available in development mode');
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Clear any existing auth cache
+      sessionStorage.removeItem('auth_cache');
+      sessionStorage.removeItem('user_cache');
+      sessionStorage.removeItem('admin_check');
+
+      console.log('Performing development login via backend...');
+
+      // Call the backend dev-login endpoint to get a real JWT token
+      const response = await authAPI.developmentLogin();
+      console.log('Development login response:', response.data);
+      
+      if (!response.data || !(response.data as any).access_token) {
+        throw new Error("No access token received from development login");
+      }
+      
+      // Store the real JWT token from backend
+      localStorage.setItem('token', (response.data as any).access_token);
+      console.log('[DEBUG] Real dev token set in localStorage');
+
+      try {
+        // Get user profile with the new token
+        const userResponse = await authAPI.getCurrentUser();
+        console.log('Development user data:', userResponse.data);
+        setUser(userResponse.data as User);
+        setError(null);
+      } catch (userErr) {
+        logError(userErr, { context: 'Fetching user data after development login' });
+        throw new Error("Could not retrieve user details after development login.");
+      }
+
+      console.log('Development login successful');
+      setError(null);
+
+      // Create a custom event to notify that authentication is complete
+      const authEvent = new CustomEvent('auth-status-changed', {
+        detail: { authenticated: true, user: (await authAPI.getCurrentUser()).data }
+      });
+      window.dispatchEvent(authEvent);
+    } catch (err: any) {
+      console.error('Development login error:', err);
+      setError(err.message || 'Development login failed');
+      setUser(null);
+      localStorage.removeItem('token');
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = () => {
-    // Special handling for dev mode - never actually logout
-    if (isDevMode() && isDevToken(localStorage.getItem('token') || '')) {
-      console.log('[DEBUG] Preventing logout in development mode with dev token');
-      // Instead of logging out, refresh admin status
-      forceAdminStatusForDevMode();
-      setUser({ ...mockUser, isVerifiedAdmin: true });
-      // Dispatch an event to notify components that auth status was preserved
-      const authEvent = new CustomEvent('auth-status-preserved', {
-        detail: { preserved: true, user: mockUser }
-      });
-      window.dispatchEvent(authEvent);
-      return;
-    }
-    
-    // Normal logout flow for production
+    // Normal logout flow
     localStorage.removeItem('token');
     console.log('[DEBUG] Token removed from localStorage (logout)');
     setUser(null);
@@ -319,24 +337,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user_cache: typeof window !== 'undefined' ? sessionStorage.getItem('user_cache') : null,
     });
     
-    // Persistent token check - ensure dev token stays consistent in dev mode
-    if (isDevMode() && user) {
-      const token = localStorage.getItem('token');
-      if (!token && isDev) {
-        console.log('[DEBUG][AuthContext] Restoring missing dev token');
-        localStorage.setItem('token', DEV_TOKEN);
-      }
-    }
-  });
 
-  // Harden dev mode: never allow user to be null in dev mode
-  if (isDev) {
-    if (!user || !user.isVerifiedAdmin) {
-      setUser({ ...mockUser, isVerifiedAdmin: true });
-    }
-    if (loading) setLoading(false);
-    if (!authChecked) setAuthChecked(true);
-  }
+  });
 
   // Only render children once auth check is complete
   if (!authChecked && loading) {
@@ -349,6 +351,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loading, 
       error, 
       login, 
+      developmentLogin,
       logout, 
       isAdmin, 
       clearError, 
@@ -368,12 +371,13 @@ export const useAuth = () => {
   return context;
 };
 
-// Failsafe: Always restore dev token if in dev mode and cache is present but token is missing (runs before React renders)
-if (isDevMode()) {
-  const token = localStorage.getItem('token');
-  const authCache = sessionStorage.getItem('auth_cache');
-  if (!token && authCache) {
-    localStorage.setItem('token', DEV_TOKEN);
-    // Optionally: console.log('[DEBUG] Failsafe: Dev token restored in localStorage (module scope)');
-  }
-}
+// Failsafe disabled to prevent interference with login flows
+// Note: This failsafe was automatically restoring dev tokens and preventing Google Auth
+// if (isDevMode()) {
+//   const token = localStorage.getItem('token');
+//   const authCache = sessionStorage.getItem('auth_cache');
+//   if (!token && authCache) {
+//     localStorage.setItem('token', DEV_TOKEN);
+//     // Optionally: console.log('[DEBUG] Failsafe: Dev token restored in localStorage (module scope)');
+//   }
+// }

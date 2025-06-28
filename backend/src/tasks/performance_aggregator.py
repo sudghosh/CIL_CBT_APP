@@ -12,21 +12,23 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from ..database.models import (
     TestAttempt, TestAnswer, Question, User, Paper, Section, Subsection,
-    UserPerformanceProfile, UserOverallSummary, UserTopicSummary
+    UserPerformanceProfile, UserOverallSummary, UserTopicSummary, UserQuestionDifficulty
 )
+from ..database.database import SessionLocal
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-async def performance_aggregation_task(attempt_id: int, db: Session):
+async def performance_aggregation_task(attempt_id: int):
     """
     Aggregates performance data from a test attempt and updates summary tables.
     
     Args:
         attempt_id: The ID of the TestAttempt to aggregate data from
-        db: SQLAlchemy database session
     """
+    # Create a new database session for this background task
+    db = SessionLocal()
     try:
         logger.info(f"Starting performance aggregation for attempt ID {attempt_id}")
         
@@ -48,24 +50,113 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
         # Gather metrics
         total_questions = len(answers)
         answered_questions = sum(1 for a in answers if a.selected_option_index is not None)
-        correct_answers = sum(1 for a in answers if a.is_correct is True)
-        incorrect_answers = sum(1 for a in answers if a.is_correct is False)
+        
+        # Calculate correct answers by comparing with question's correct option
+        correct_answers = 0
+        incorrect_answers = 0
+        
+        for answer in answers:
+            if answer.selected_option_index is not None:  # Only consider answered questions
+                question = db.query(Question).filter(Question.question_id == answer.question_id).first()
+                if question and answer.selected_option_index == question.correct_option_index:
+                    correct_answers += 1
+                elif question:
+                    incorrect_answers += 1
+        
         unanswered = total_questions - answered_questions
         total_time_seconds = sum(a.time_taken_seconds for a in answers if a.time_taken_seconds is not None)
         
         avg_time_per_question = total_time_seconds / answered_questions if answered_questions > 0 else 0
         accuracy = (correct_answers / answered_questions) * 100 if answered_questions > 0 else 0
-        
-        # Update dynamic question difficulty for incorrect answers
+          # Process each answer to update both global and user-specific difficulty
         for answer in answers:
-            if answer.selected_option_index is not None and answer.is_correct is False:
+            if answer.selected_option_index is not None:  # Only process answered questions
                 # Get the question
                 question = db.query(Question).filter(Question.question_id == answer.question_id).first()
-                if question:
-                    # Increment the numeric difficulty by 1, up to a maximum of 10
-                    question.numeric_difficulty = min(10, question.numeric_difficulty + 1)
+                
+                if not question:
+                    continue
+                
+                # Calculate if answer is correct
+                is_answer_correct = answer.selected_option_index == question.correct_option_index
+                
+                # Get or create the user-specific question difficulty record
+                user_question_difficulty = db.query(UserQuestionDifficulty).filter(
+                    UserQuestionDifficulty.user_id == user_id,
+                    UserQuestionDifficulty.question_id == answer.question_id
+                ).first()
+                
+                if not user_question_difficulty:
+                    # Create new user-specific difficulty record
+                    user_question_difficulty = UserQuestionDifficulty(
+                        user_id=user_id,
+                        question_id=answer.question_id,
+                        numeric_difficulty=question.numeric_difficulty,
+                        difficulty_level=question.difficulty_level,
+                        confidence=0.1,  # Initial low confidence
+                        attempts=0,
+                        correct_answers=0,
+                        avg_time_seconds=0.0,
+                        is_calibrating=True
+                    )
+                
+                # Update user-specific metrics
+                user_question_difficulty.attempts += 1
+                if is_answer_correct:
+                    user_question_difficulty.correct_answers += 1
+                
+                # Update average time
+                if answer.time_taken_seconds:
+                    if user_question_difficulty.avg_time_seconds > 0:
+                        # Weighted average based on attempts
+                        weight = 1.0 / user_question_difficulty.attempts
+                        user_question_difficulty.avg_time_seconds = (
+                            user_question_difficulty.avg_time_seconds * (1 - weight) + 
+                            answer.time_taken_seconds * weight
+                        )
+                    else:
+                        user_question_difficulty.avg_time_seconds = answer.time_taken_seconds
+                
+                # Update user-specific difficulty based on performance
+                if not is_answer_correct:
+                    # Increase difficulty if answered incorrectly
+                    user_question_difficulty.numeric_difficulty = min(10, user_question_difficulty.numeric_difficulty + 1.0)
+                else:
+                    # Decrease difficulty slightly if answered correctly
+                    user_question_difficulty.numeric_difficulty = max(0, user_question_difficulty.numeric_difficulty - 0.5)
+                
+                # Update difficulty level string based on numeric value
+                if 0 <= user_question_difficulty.numeric_difficulty <= 3:
+                    user_question_difficulty.difficulty_level = 'Easy'
+                elif 4 <= user_question_difficulty.numeric_difficulty <= 6:
+                    user_question_difficulty.difficulty_level = 'Medium'
+                else:  # 7-10
+                    user_question_difficulty.difficulty_level = 'Hard'
+                
+                # Update confidence based on number of attempts
+                user_question_difficulty.confidence = min(1.0, 0.1 + (user_question_difficulty.attempts * 0.05))
+                
+                # Update calibration status
+                if user_question_difficulty.attempts >= 5:
+                    user_question_difficulty.is_calibrating = False
+                
+                # Update last attempted timestamp
+                user_question_difficulty.last_attempted_at = datetime.utcnow()
+                
+                db.add(user_question_difficulty)
+                logger.info(f"Updated user-specific difficulty for user {user_id}, question {question.question_id} to {user_question_difficulty.numeric_difficulty} ({user_question_difficulty.difficulty_level})")
+                
+                # Also update the global question difficulty metrics (less aggressively)
+                # Only update if the user has passed calibration phase for better data quality
+                if not user_question_difficulty.is_calibrating:
+                    if not is_answer_correct:
+                        # Increment the global numeric difficulty by a small amount
+                        question.numeric_difficulty = min(10, question.numeric_difficulty + 0.2)
+                    else:
+                        # Decrease global difficulty by a very small amount 
+                        question.numeric_difficulty = max(0, question.numeric_difficulty - 0.1)
                     
-                    # Update the string difficulty level based on the numeric value
+                    # Update the global string difficulty level based on the numeric value
                     if 0 <= question.numeric_difficulty <= 3:
                         question.difficulty_level = 'Easy'
                     elif 4 <= question.numeric_difficulty <= 6:
@@ -73,8 +164,11 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
                     else:  # 7-10
                         question.difficulty_level = 'Hard'
                     
+                    # Update the last calculated timestamp for global difficulty
+                    question.difficulty_last_calculated = datetime.utcnow()
+                    
                     db.add(question)
-                    logger.info(f"Updated difficulty for question {question.question_id} to {question.numeric_difficulty} ({question.difficulty_level})")
+                    logger.info(f"Updated global difficulty for question {question.question_id} to {question.numeric_difficulty} ({question.difficulty_level})")
         
         # Update UserOverallSummary
         user_summary = db.query(UserOverallSummary).filter(
@@ -142,6 +236,9 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
             question = db.query(Question).filter(Question.question_id == answer.question_id).first()
             if not question:
                 continue
+            
+            # Calculate if answer is correct
+            is_answer_correct = answer.selected_option_index == question.correct_option_index
                 
             topic_key = (question.paper_id, question.section_id, question.subsection_id)
             
@@ -166,15 +263,15 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
             
             if difficulty == "Easy":
                 metrics["total_easy"] += 1
-                if answer.is_correct:
+                if is_answer_correct:
                     metrics["correct_easy"] += 1
             elif difficulty == "Medium":
                 metrics["total_medium"] += 1
-                if answer.is_correct:
+                if is_answer_correct:
                     metrics["correct_medium"] += 1
             elif difficulty == "Hard":
                 metrics["total_hard"] += 1
-                if answer.is_correct:
+                if is_answer_correct:
                     metrics["correct_hard"] += 1
         
         # Update UserTopicSummary for each topic
@@ -240,3 +337,6 @@ async def performance_aggregation_task(attempt_id: int, db: Session):
         import traceback
         logger.error(traceback.format_exc())
         db.rollback()
+    finally:
+        # Always close the database session
+        db.close()

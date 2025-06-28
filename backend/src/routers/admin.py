@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from slowapi import Limiter
@@ -49,7 +49,7 @@ class AllowedEmailCreate(BaseModel):
 class AllowedEmailResponse(BaseModel):
     allowed_email_id: int
     email: str
-    added_by_admin_id: int
+    added_by_admin_id: Optional[int] = None  # Allow None for existing NULL values
     added_at: datetime
 
     class Config:

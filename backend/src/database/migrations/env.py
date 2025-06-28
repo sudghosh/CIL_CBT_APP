@@ -52,6 +52,7 @@ from src.database.models import (
     UserPerformanceProfile,
     UserOverallSummary,
     UserTopicSummary,
+    UserQuestionDifficulty,
 )
 
 # All your SQLAlchemy models' metadata are collected here for Alembic to inspect

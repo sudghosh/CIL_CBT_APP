@@ -9,6 +9,18 @@ import {
   mockTimePerformance,
   getMockNextQuestion,
 } from '../utils/mockData';
+import {
+  OverallSummary,
+  TopicSummary,
+  ChartTimePeriod,
+  ApiTimePeriod
+} from '../types';
+import {
+  DifficultyTrendsResponse,
+  TopicMasteryResponse,
+  RecommendationsResponse,
+  PerformanceComparisonResponse
+} from '../components/charts/types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -189,9 +201,13 @@ api.interceptors.response.use(
       }
       
       throw new APIError('Your session has expired. Please log in again.', 401);
-    }
-    if (error.response?.status === 403) {
-      throw new APIError('You do not have permission to perform this action.', 403);
+    }    if (error.response?.status === 403) {
+      // Check if the error response contains a specific message
+      const errorMessage = error.response?.data?.detail || 
+                           error.response?.data?.message || 
+                           error.response?.data?.error ||
+                           'You do not have permission to perform this action. Please contact an administrator for access if you need these features.';
+      throw new APIError(errorMessage, 403);
     }
     if (error.response?.status === 404) {
       throw new APIError('The requested resource was not found.', 404);
@@ -230,7 +246,22 @@ export const authAPI = {
     }, {
       retries: 1, // Retry once
       retryDelay: 500 // Start with 500ms delay
-    }),  getUsers: () => api.get('/auth/users'),
+    }),
+    
+  developmentLogin: () => 
+    // Call the backend dev-login endpoint to get a real JWT token
+    axiosWithRetry.post('/auth/dev-login', {}, {
+      baseURL: API_URL,
+      timeout: 8000, // 8 second timeout
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }, {
+      retries: 1, // Retry once  
+      retryDelay: 500 // Start with 500ms delay
+    }),
+    
+  getUsers: () => api.get('/auth/users'),
   whitelistEmail: (email: string) => api.post('/admin/allowed-emails', { email: email }),
   getAllowedEmails: () => api.get('/admin/allowed-emails'),
   deleteAllowedEmail: (emailId: number) => api.delete(`/admin/allowed-emails/${emailId}`),
@@ -834,6 +865,135 @@ export const performanceAPI = {
         console.error('Failed to get time performance:', error);
         console.warn('Using mock time performance data');
         return Promise.resolve(mockTimePerformance);
+      });
+  },
+  /**
+   * Get difficulty trend visualization data
+   * Shows how difficulty ratings change over time
+   * @param filters - Optional filters to limit results
+   * @returns Promise with difficulty trend data for visualizations
+   */  getDifficultyTrends: (filters?: {
+    timePeriod?: ApiTimePeriod;
+  }): Promise<DifficultyTrendsResponse> => {
+    // Build query parameters
+    const params: any = {};
+    if (filters?.timePeriod) params.time_period = filters.timePeriod;
+    
+    return api.get<DifficultyTrendsResponse>('/performance/difficulty-trends', { params })
+      .then(response => {
+        console.log('Difficulty trends retrieved:', JSON.stringify(response.data, null, 2));
+        return response.data;
+      }).catch(error => {
+        console.error('Failed to get difficulty trends:', error);
+        // If 403 Forbidden, return specific message
+        if (error.response?.status === 403) {
+          return {
+            status: 'error',
+            message: 'You do not have access to personalized difficulty trend data. Please contact an administrator.',
+            data: null
+          };
+        }        // Return empty data structure
+        return {
+          status: 'error',
+          message: 'Could not retrieve difficulty trends',
+          data: { overall: [], by_topic: {} }
+        };
+      });
+  },
+    /**
+   * Get topic mastery progression data for visualizations
+   * Shows how a user's mastery of different topics has evolved over time
+   * @returns Promise with topic mastery data
+   */  getTopicMastery: (): Promise<TopicMasteryResponse> => {
+    return api.get<TopicMasteryResponse>('/performance/topic-mastery')
+      .then(response => {
+        console.log('Topic mastery retrieved:', JSON.stringify(response.data, null, 2));
+        return response.data;
+      })
+      .catch(error => {
+        console.error('Failed to get topic mastery:', error);
+        // If 403 Forbidden, return specific message
+        if (error.response?.status === 403) {
+          return {
+            status: 'error',
+            message: 'You do not have access to personalized topic mastery data. Please contact an administrator.',
+            data: null
+          };
+        }
+        // Return empty data structure
+        return {
+          status: 'error',
+          message: 'Could not retrieve topic mastery data',
+          data: { topic_mastery: {}, mastery_progression: [] }
+        };
+      });
+  },
+    /**
+   * Get personalized test recommendations
+   * Provides recommendations for topics to focus on, areas for improvement,
+   * and suggested questions to practice
+   * @param maxRecommendations - Maximum number of recommendations to return
+   * @returns Promise with recommendations data
+   */  getRecommendations: (maxRecommendations: number = 5): Promise<RecommendationsResponse> => {
+    return api.get<RecommendationsResponse>('/performance/recommendations', { params: { max_recommendations: maxRecommendations } })
+      .then(response => {
+        console.log('Recommendations retrieved:', JSON.stringify(response.data, null, 2));
+        return response.data;
+      })
+      .catch(error => {
+        console.error('Failed to get recommendations:', error);
+        // If 403 Forbidden, return specific message
+        if (error.response?.status === 403) {
+          return {
+            status: 'error',
+            message: 'You do not have access to personalized recommendations. Please contact an administrator.',
+            data: null
+          } as RecommendationsResponse;
+        }
+        // Return empty data structure
+        return {
+          status: 'error',
+          message: 'Could not retrieve recommendations',
+          data: {
+            recommendations: [],
+            insights: []
+          }
+        } as RecommendationsResponse;
+      });
+  },
+    /**
+   * Get performance comparison data
+   * Compares user's performance against overall averages
+   * @returns Promise with comparison data
+   */  getPerformanceComparison: (): Promise<PerformanceComparisonResponse> => {
+    return api.get<PerformanceComparisonResponse>('/performance/performance-comparison')
+      .then(response => {
+        console.log('Performance comparison retrieved:', JSON.stringify(response.data, null, 2));
+        return response.data;
+      })
+      .catch(error => {
+        console.error('Failed to get performance comparison:', error);
+        // If 403 Forbidden, return specific message
+        if (error.response?.status === 403) {
+          return {
+            status: 'error',
+            message: 'You do not have access to personalized performance comparison data. Please contact an administrator.',
+            data: null
+          } as PerformanceComparisonResponse;
+        }
+        // Return empty data structure
+        return {
+          status: 'error',
+          message: 'Could not retrieve performance comparison data',
+          data: {
+            metrics: [],
+            difficulty_comparison: {
+              easy: { user_accuracy: 0, average_accuracy: 0, user_time: 0, average_time: 0 },
+              medium: { user_accuracy: 0, average_accuracy: 0, user_time: 0, average_time: 0 },
+              hard: { user_accuracy: 0, average_accuracy: 0, user_time: 0, average_time: 0 }
+            }
+          }
+        } as PerformanceComparisonResponse;
       });
   }
 };

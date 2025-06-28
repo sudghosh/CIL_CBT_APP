@@ -3,11 +3,6 @@
  */
 
 /**
- * The token used for development authentication
- */
-export const DEV_TOKEN = 'dev-token-for-testing';
-
-/**
  * Check if the app is running in development mode
  * @returns boolean - true if in development mode
  */
@@ -37,6 +32,12 @@ export const createDevToken = (): string => {
 };
 
 /**
+ * The token used for development authentication
+ * Now uses a JWT-like structure to avoid backend parsing errors
+ */
+export const DEV_TOKEN = createDevToken();
+
+/**
  * Check if we should use development authentication
  * This is a helper function that checks both:
  * 1. If we're in development mode
@@ -61,5 +62,5 @@ export const shouldUseDevAuth = (urlParams?: URLSearchParams): boolean => {
  * @returns boolean - true if it's a development token
  */
 export const isDevToken = (token: string): boolean => {
-  return token === DEV_TOKEN;
+  return token.startsWith('devheader.') && token.endsWith('.devsignature');
 };

@@ -1,15 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { CssBaseline, Box, LinearProgress, Typography, Button } from '@mui/material';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { authAPI } from './services/api';
-import { shouldReauthenticate, timeSinceLastAuthCheck, recordAuthCheck, recordAdminCheck } from './utils/authOptimization';
-import { isAuthenticatedFromCache, cacheAuthState } from './utils/authCache';
-import { isDevToken, isDevMode } from './utils/devMode';
-import { forceAdminStatusForDevMode } from './utils/syncAuthState';
-import { setupTokenMonitor } from './utils/tokenMonitor';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { authAPI } from './services/api';
+import { isDevMode, isDevToken } from './utils/devMode';
+import { cacheAuthState } from './utils/authCache';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
@@ -28,310 +25,58 @@ import { NavigationAuthGuard } from './components/NavigationAuthGuard';
 // Theme is now managed by ThemeContext
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, refreshAuthStatus, authChecked } = useAuth();
-  const [isVerifying, setIsVerifying] = useState(false);
-  // Track initial mount to prevent first-render redirects
-  const isInitialMount = React.useRef(true);
+  const { user, loading, authChecked } = useAuth();
   
-  // Debug log
-  console.log('[DEBUG][ProtectedRoute] user:', user, 'loading:', loading, 'authChecked:', authChecked, 'isInitialMount:', isInitialMount.current);
-    // Check token validity when accessing protected routes
-  useEffect(() => {
-    // On first render, mark as no longer initial mount
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-    }
-    
-    // Prevent refreshing auth status on every re-render
-    // Only do it when necessary (no user or first time accessing a protected route)
-    const token = localStorage.getItem('token');
-    const authCheckInterval = 5 * 60 * 1000; // 5 minutes
-    
-    // Skip authentication check if:
-    // 1. We already have authentication cached
-    // 2. We've checked recently (within 5 minutes)
-    // 3. We're in development mode with dev token
-    if (token && user && (!shouldReauthenticate() || timeSinceLastAuthCheck() < authCheckInterval)) {
-      // No need to verify
-      return;
-    }
-    
-    // Otherwise, perform authentication check
-    if (token) {
-      setIsVerifying(true);
-      refreshAuthStatus().then(success => {
-        if (success && user) {
-          // Cache the authentication result for better performance
-          cacheAuthState(user);
-        }
-      }).finally(() => {
-        setIsVerifying(false);
-        // Record that we performed an auth check
-        recordAuthCheck();
-      });
-    }
-  }, [user, refreshAuthStatus]);
+  console.log('[DEBUG][ProtectedRoute] user:', user, 'loading:', loading, 'authChecked:', authChecked);
 
-  if (loading || isVerifying) {
+  // Show loading while auth state is being determined
+  if (loading || !authChecked) {
     return (
       <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Loading your profile...</Typography>
-      </Box>
-    );
-  }  if (!user) {
-    // Check for development mode token before redirecting
-    const token = localStorage.getItem('token');
-    const isDevUser = isDevMode() && token && isDevToken(token);
-    
-    // If we're in dev mode with a dev token but no user, wait for auth context to update
-    if (isDevUser && !user && !isInitialMount.current) {
-      console.log('[DEBUG][ProtectedRoute] Dev token detected but no user - waiting for auth check');
-      return (
-        <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <LinearProgress sx={{ width: '50%', mb: 2 }} />
-          <Typography variant="body1">Restoring development authentication...</Typography>
-        </Box>
-      );
-    }
-    
-    // Only redirect after the initial mount is complete and authentication is checked
-    if (!isInitialMount.current && authChecked) {
-      // Save the current URL for redirecting back after login
-      sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-      console.log('[DEBUG][Redirect][AppRoute] Redirecting to /login because user is:', user, 'token:', token, 'loading:', loading);
-      return <Navigate to="/login" replace />;
-    }
-    // Show loading instead of redirecting during initial mount
-    return (
-      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Verifying authentication status...</Typography>
+        <Typography variant="body1">Checking authentication...</Typography>
       </Box>
     );
   }
 
+  // If no user is authenticated, redirect to login
+  if (!user) {
+    console.log('[DEBUG][ProtectedRoute] No user authenticated, redirecting to login');
+    return <Navigate to="/login" replace />;
+  }
+
+  // User is authenticated, render protected content
   return <Layout>{children}</Layout>;
 };
 
-const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, isAdmin, refreshAuthStatus, authChecked } = useAuth();
-  const [isVerifying, setIsVerifying] = useState(false);
-  // Track initial mount to prevent first-render redirects
-  const isInitialMount = React.useRef(true);
-  
-  // Debug log
-  console.log('[DEBUG][AdminRoute] user:', user, 'isAdmin:', isAdmin, 'loading:', loading, 'authChecked:', authChecked, 'isInitialMount:', isInitialMount.current);
-    // Refresh auth status when accessing admin routes to ensure fresh token validation
-  useEffect(() => {
-    // Track if component is mounted
-    let isMounted = true;
-    
-    async function verifyAuth() {
-      // On first render, mark as no longer initial mount
-      if (isInitialMount.current) {
-        isInitialMount.current = false;
-      }
-      
-      // Always do an initial admin check when the component mounts
-      console.log('[DEBUG] AdminRoute checking authentication');
-      
-      if (!user) {
-        console.log('[DEBUG] AdminRoute: No user found');
-        if (isMounted) setIsVerifying(false);
-        return;
-      }
-      
-      // For dev token, immediately set admin status and exit
-      const token = localStorage.getItem('token');
-      if (token && isDevToken(token) && isDevMode()) {
-        console.log('[DEBUG] AdminRoute: Dev token detected, setting admin status');
-        // Always mark as admin in dev mode with dev token
-        const userWithAdmin = {...user, role: 'Admin', isVerifiedAdmin: true};
-        cacheAuthState(userWithAdmin);
-        
-        // Force set additional flags for development mode
-        sessionStorage.setItem('admin_check', JSON.stringify({
-          value: true,
-          expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours for dev mode
-        }));
-        sessionStorage.setItem('lastAdminCheck', Date.now().toString());
-        
-        // No need to verify for dev token
-        if (isMounted) setIsVerifying(false);
-        return; 
-      }
-      
-      const adminCheckInterval = 10 * 60 * 1000; // 10 minutes
-      const lastAdminCheck = sessionStorage.getItem('lastAdminCheck');
-      const now = Date.now();
-      const timeSinceLastCheck = lastAdminCheck ? (now - parseInt(lastAdminCheck, 10)) : Infinity;
-      
-      // Check if admin status is cached and recent
-      const adminCacheRaw = sessionStorage.getItem('admin_check');
-      const hasAdminCache = adminCacheRaw && JSON.parse(adminCacheRaw)?.value === true;
-      
-      // Skip check if we have a cached admin status that's still valid
-      if (hasAdminCache && timeSinceLastCheck < adminCheckInterval) {
-        console.log('[DEBUG] AdminRoute: Using cached admin status');
-        if (isMounted) setIsVerifying(false); // Ensure we're not stuck in verification state
-        return;
-      }
-      
-      // Otherwise perform admin verification
-      if (isMounted) setIsVerifying(true);
-      console.log('[DEBUG] AdminRoute: Verifying admin status'); 
-        
-      try {
-        // Double check authentication status for admin routes
-        await refreshAuthStatus();
-        if (user && isAdmin) {
-          console.log('[DEBUG] AdminRoute: User confirmed as admin, updating cache');
-          // Cache the admin status for future checks
-          cacheAuthState({...user, isVerifiedAdmin: true});
-        } else {
-          console.log('[DEBUG] AdminRoute: User is not admin');
-        }
-        // Record that we checked
-        recordAdminCheck();
-      } catch (error) {
-        console.error('[DEBUG] AdminRoute: Error verifying admin status', error);
-        // Prevent getting stuck due to errors
-      } finally {
-        if (isMounted) setIsVerifying(false);
-      }
-    }
-    
-    verifyAuth();
-    
-    // Add a safety timeout to prevent eternal verification state
-    const safetyTimeout = setTimeout(() => {
-      if (isMounted && isVerifying) {
-        console.log('[DEBUG] AdminRoute: Safety timeout triggered to prevent eternal verification');
-        setIsVerifying(false);
-      }
-    }, 5000); // 5 seconds max wait time
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-      clearTimeout(safetyTimeout);
-    };
-  }, [user, refreshAuthStatus, isAdmin]);
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading, isAdmin, authChecked } = useAuth();
 
-  // Add state for tracking verification timeout
-  const [verificationTimeout, setVerificationTimeout] = useState(false);
+  console.log('[DEBUG][AdminRoute] user:', user, 'isAdmin:', isAdmin, 'loading:', loading, 'authChecked:', authChecked);
 
-  // Set a timeout to detect when verification is taking too long
-  useEffect(() => {
-    let timeoutId: number | undefined;
-    
-    if (isVerifying) {
-      // After 8 seconds, show a timeout message
-      timeoutId = window.setTimeout(() => {
-        setVerificationTimeout(true);
-      }, 8000);
-    } else {
-      setVerificationTimeout(false);
-    }
-    
-    return () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
-  }, [isVerifying]);
-
-  if (loading || isVerifying) {
+  // Show loading while auth state is being determined
+  if (loading || !authChecked) {
     return (
       <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Verifying administrator access...</Typography>
-        
-        {/* Show retry option if verification is taking too long */}
-        {verificationTimeout && (
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
-              Verification is taking longer than expected.
-            </Typography>
-            <Button 
-              variant="outlined" 
-              size="small"
-              onClick={() => {
-                setVerificationTimeout(false);
-                setIsVerifying(false);
-                // Force a refresh by updating URL parameters
-                window.location.search = `?refresh=${Date.now()}`;
-              }}
-            >
-              Retry Now
-            </Button>
-          </Box>
-        )}
-      </Box>
-    );
-  }  // Wait for authChecked to be true before proceeding (prevents race condition)
-  if (!authChecked) {
-    console.log('[DEBUG][AdminRoute] Waiting for authentication check to complete');
-      // In development mode, log detailed auth state for debugging
-    if (isDevMode()) {
-      console.log('[DEBUG][AdminRoute] Auth not checked yet, waiting for initialization');
-      // Log authentication state
-      const token = localStorage.getItem('token');
-      const adminCacheRaw = sessionStorage.getItem('admin_check');      console.log('[DEBUG][AdminRoute] Current auth state:', {
-        token: token ? 'exists' : 'null',
-        isDev: isDevMode(),
-        isDevToken: token && isDevToken(token),
-        adminCache: adminCacheRaw ? JSON.parse(adminCacheRaw) : null
-      });
-    }
-    
-    return (
-      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Waiting for authentication...</Typography>
-      </Box>
-    );
-  }  if (!user) {
-    // Check for development mode token before redirecting
-    const token = localStorage.getItem('token');
-    const isDevUser = isDevMode() && token && isDevToken(token);
-    
-    // If we're in dev mode with a dev token but no user, wait for auth context to update
-    if (isDevUser && !user && !isInitialMount.current) {
-      console.log('[DEBUG][AdminRoute] Dev token detected but no user - waiting for auth check');
-      
-      // Force admin status for dev mode
-      if (isDevMode()) {
-        forceAdminStatusForDevMode();
-      }
-      
-      return (
-        <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <LinearProgress sx={{ width: '50%', mb: 2 }} />
-          <Typography variant="body1">Restoring development authentication...</Typography>
-        </Box>
-      );
-    }
-    
-    // Only redirect after the initial mount is complete and authentication is checked
-    if (!isInitialMount.current && authChecked) {
-      // Save the current URL for redirecting back after login
-      sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-      console.log('[DEBUG][Redirect][AdminRoute] Redirecting to /login because user is:', user, 'token:', token, 'isAdmin:', isAdmin, 'loading:', loading);
-      return <Navigate to="/login" replace />;
-    }
-    // Show loading instead of redirecting during initial mount
-    return (
-      <Box sx={{ width: '100%', mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <LinearProgress sx={{ width: '50%', mb: 2 }} />
-        <Typography variant="body1">Verifying authentication status...</Typography>
+        <Typography variant="body1">Checking authentication...</Typography>
       </Box>
     );
   }
-  
+
+  // If no user is authenticated, redirect to login
+  if (!user) {
+    console.log('[DEBUG][AdminRoute] No user authenticated, redirecting to login');
+    return <Navigate to="/login" replace />;
+  }
+
+  // If user is not admin, redirect to home
   if (!isAdmin) {
+    console.log('[DEBUG][AdminRoute] User is not admin, redirecting to home');
     return <Navigate to="/" replace />;
   }
 
+  // User is authenticated and is admin, render protected content
   return <Layout>{children}</Layout>;
 };
 
