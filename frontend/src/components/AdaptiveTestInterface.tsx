@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { JSX } from 'react';
 import {
   Box,
   Paper,
@@ -130,7 +131,7 @@ export const AdaptiveTestInterface = ({
                 questionId,
                 originalOptionIndex,
                 timeTakenSeconds
-              ).catch(err => console.warn('Error submitting final answer, continuing anyway:', err));
+              ).catch((err: any) => console.warn('Error submitting final answer, continuing anyway:', err));
             }
           } catch (submitErr) {
             console.warn('Error in final answer submission, proceeding to finish test anyway:', submitErr);
@@ -155,8 +156,7 @@ export const AdaptiveTestInterface = ({
       setIsSubmitting(false);
       setShowConfirmSubmit(false);
     }
-  }, [attemptId, currentQuestion, selectedOption, questionStartTime, onComplete]);
-      /**
+  }, [attemptId, currentQuestion, selectedOption, questionStartTime, onComplete]);      /**
    * Initialize the test duration when component mounts
    */
   useEffect(() => {
@@ -166,8 +166,7 @@ export const AdaptiveTestInterface = ({
     
     console.log(`Setting adaptive test duration to ${testDuration} minutes (${durationInSeconds} seconds)`);
   }, [testDuration]);
-  
-  /**
+    /**
    * Initialize the timer for the test
    * Separated from question fetching to prevent infinite loops
    */
@@ -177,13 +176,13 @@ export const AdaptiveTestInterface = ({
     
     // Initialize the test timer
     const timerInterval = setInterval(() => {
-      setTimeLeft(prevTime => {
+      setTimeLeft((prevTime: number) => {
         if (prevTime <= 1) {
           clearInterval(timerInterval);
           // Use a stable reference to handle test submission
           testsAPI.finishTest(attemptId)
             .then(() => onComplete())
-            .catch(err => {
+            .catch((err: any) => {
               console.error('Error finishing test due to timeout:', err);
               onComplete(); // Still complete the test on the frontend
             });
@@ -195,9 +194,8 @@ export const AdaptiveTestInterface = ({
 
     // Clean up timer on unmount
     return () => clearInterval(timerInterval);
-  }, [attemptId, onComplete]); // Remove handleSubmitTest from dependencies
-  
-  /**
+  }, [attemptId, onComplete, testsAPI]); // Added testsAPI to dependencies
+    /**
    * Separate effect for fetching the first question
    * Runs only once on component mount
    */
@@ -207,6 +205,7 @@ export const AdaptiveTestInterface = ({
     
     // Only fetch the question once on component mount
     fetchNextQuestion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);    /**
    * Fetch the next question from the API
    */
@@ -508,7 +507,7 @@ export const AdaptiveTestInterface = ({
         console.log(`Updated progress: ${progressPercent.toFixed(1)}% (${newQuestionsAnswered}/${newMaxQuestions})`);
       } else {
         // Fallback to previous logic if max questions is unknown
-        setTestProgress(prev => Math.min(95, prev + 4.5));
+        setTestProgress((prev: number) => Math.min(95, prev + 4.5));
       }
       
       // Check if we've reached the max questions limit - handle both client and server side validation
@@ -699,7 +698,7 @@ export const AdaptiveTestInterface = ({
               {/* Answer Options */}
             <RadioGroup
               value={selectedOption}
-              onChange={(e) => setSelectedOption(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedOption(e.target.value)}
             >
               {(() => {
                 // Debug options data

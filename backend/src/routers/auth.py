@@ -167,8 +167,8 @@ async def dev_login(db: Session = Depends(get_db)):
             detail="Development login is only available in development environment"
         )
     
-    # Use a mock admin user for development
-    dev_email = "dev@example.com"
+    # Use the email of the user who has performance data for easier testing
+    dev_email = "binty.ghosh@gmail.com"
     
     try:
         # Check if dev user exists, create if not

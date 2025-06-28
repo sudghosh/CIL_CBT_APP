@@ -16,6 +16,7 @@ from datetime import date
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from .database import Base
+from .user_question_difficulty_model import UserQuestionDifficulty
 
 class User(Base):
     __tablename__ = "users"
@@ -29,13 +30,13 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
     # Add relationships for easy access
     created_papers = relationship("Paper", back_populates="created_by")
     created_questions = relationship("Question", back_populates="created_by")
     test_attempts = relationship("TestAttempt", back_populates="user")
     overall_summary = relationship("UserOverallSummary", back_populates="user", uselist=False)
     topic_summaries = relationship("UserTopicSummary", back_populates="user")
+    question_difficulties = relationship("UserQuestionDifficulty", back_populates="user")
 
 class AllowedEmail(Base):
     __tablename__ = "allowed_emails"
@@ -105,7 +106,8 @@ class Question(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    valid_until = Column(Date, nullable=False, default=date(9999, 12, 31))    # Enhanced relationships
+    valid_until = Column(Date, nullable=False, default=date(9999, 12, 31))
+    # Enhanced relationships    
     paper = relationship("Paper", back_populates="questions")
     section = relationship("Section", back_populates="questions")
     subsection = relationship("Subsection", back_populates="questions")
@@ -113,6 +115,8 @@ class Question(Base):
     options = relationship("QuestionOption", back_populates="question", order_by="QuestionOption.option_order", cascade="all, delete-orphan")
     # Enable cascading delete for test_answers
     test_answers = relationship("TestAnswer", back_populates="question", cascade="all, delete-orphan")  # NOTE: Requires DB migration if changed after initial deploy
+    # User-specific difficulty ratings for this question
+    user_difficulties = relationship("UserQuestionDifficulty", back_populates="question", cascade="all, delete-orphan")
 
     @validates('question_type')
     def validate_question_type(self, key, value):

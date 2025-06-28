@@ -128,3 +128,14 @@ def verify_admin(current_user: User = Depends(verify_token)):
 def check_email_whitelist(email: str, db: Session) -> bool:
     allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
     return allowed_email is not None
+
+def verify_premium(current_user: User = Depends(verify_token)):
+    """
+    Verify that a user can access premium visualization features.
+    
+    Note: This function doesn't restrict access to premium features as 
+    the 'premium' aspect refers to enhanced visualizations available to all users,
+    not paid/restricted features.
+    """
+    # All users can access premium visualizations
+    return True

@@ -13,8 +13,9 @@ const originalSetItem = localStorage.setItem.bind(localStorage);
 const originalRemoveItem = localStorage.removeItem.bind(localStorage);
 const originalGetItem = localStorage.getItem.bind(localStorage);
 
-// Track if we're in a user-initiated logout
+// Track if we're in a user-initiated logout or login flow
 let intentionalLogout = false;
+let inLoginFlow = false;
 
 /**
  * Setup a token monitor that will prevent accidental token loss
@@ -45,8 +46,8 @@ export function setupTokenMonitor(): void {
   const intervalId = setInterval(() => {
     const token = originalGetItem('token');
     
-    // In dev mode, if token is missing, restore it
-    if (isDevMode() && !token) {
+    // In dev mode, if token is missing and we're not in a login flow, restore it
+    if (isDevMode() && !token && !inLoginFlow) {
       console.warn('[TokenMonitor] Token missing - restoring dev token');
       originalSetItem('token', DEV_TOKEN);
       // Also restore auth state in session storage
@@ -101,7 +102,24 @@ export function restoreDevTokenIfMissing(): boolean {
   return false;
 }
 
-// Auto-setup the monitor in development mode
-if (isDevMode() && typeof window !== 'undefined') {
-  setupTokenMonitor();
+/**
+ * Mark that we're entering a login flow to prevent token restoration
+ */
+export function markLoginFlowStart(): void {
+  inLoginFlow = true;
+  console.log('[TokenMonitor] Login flow started - disabling auto token restoration');
 }
+
+/**
+ * Mark that login flow has ended
+ */
+export function markLoginFlowEnd(): void {
+  inLoginFlow = false;
+  console.log('[TokenMonitor] Login flow ended - enabling auto token restoration');
+}
+
+// Conditional auto-setup - only if explicitly enabled
+// Note: Auto-setup is disabled to prevent interference with login flows
+// if (isDevMode() && typeof window !== 'undefined') {
+//   setupTokenMonitor();
+// }

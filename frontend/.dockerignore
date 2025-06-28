@@ -15,8 +15,10 @@ yarn-error.log*
 # Testing
 /coverage
 __tests__
+__mocks__
 *.test.*
 *.spec.*
+.nyc_output
 
 # Development files
 .env

@@ -42,7 +42,8 @@ from ..database.database import get_db
 from ..database.models import ( 
     TestTemplate, TestTemplateSection, TestAttempt, TestAnswer,
     Question, QuestionOption, User, Paper, Section, Subsection,
-    UserPerformanceProfile, UserOverallSummary, UserTopicSummary
+    UserPerformanceProfile, UserOverallSummary, UserTopicSummary,
+    UserQuestionDifficulty
 )
 from ..auth.auth import verify_token, verify_admin
 from ..utils.error_handler import APIErrorHandler
@@ -863,8 +864,7 @@ async def submit_answer(
 async def finish_attempt(
     attempt_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(verify_token),
-    background_tasks: BackgroundTasks = None
+    current_user: User = Depends(verify_token)
 ):
     try:
         # Get the attempt
@@ -919,15 +919,17 @@ async def finish_attempt(
         attempt.weighted_score = score  # For now, no weighting
         
         db.commit()
-        
-        # Schedule performance aggregation in the background
-        if background_tasks:
-            background_tasks.add_task(
-                performance_aggregation_task,
-                attempt_id,
-                current_user.user_id
-            )
-        
+
+        # Process performance summaries synchronously for immediate data availability
+        try:
+            logger.info(f"Processing performance summaries synchronously for attempt {attempt_id}")
+            await performance_aggregation_task(attempt_id)
+            logger.info(f"Performance summaries processed successfully for attempt {attempt_id}")
+        except Exception as e:
+            # Log the error but don't fail the test completion
+            logger.error(f"Error processing performance summaries for attempt {attempt_id}: {str(e)}")
+            logger.error(f"Performance data may not be immediately available for user {current_user.email}")
+
         return attempt
         
     except HTTPException as e:
@@ -1292,6 +1294,15 @@ async def get_next_adaptive_question(
             db.add(attempt)
             db.commit()
             
+            # Process performance summaries synchronously for adaptive test completion
+            try:
+                logger.info(f"Processing performance summaries for adaptive test completion, attempt {attempt_id}")
+                await performance_aggregation_task(attempt_id)
+                logger.info(f"Performance summaries processed successfully for adaptive test, attempt {attempt_id}")
+            except Exception as e:
+                # Log the error but don't fail the test completion
+                logger.error(f"Error processing performance summaries for adaptive test, attempt {attempt_id}: {str(e)}")
+            
             # Return a clear message that the test is complete
             return {
                 "status": "complete",
@@ -1335,55 +1346,143 @@ async def get_next_adaptive_question(
         potential_questions = db.query(Question).filter(
             Question.question_id.notin_(answered_question_ids)
         )
-        
-        # Apply adaptive strategy if defined
+          # Apply adaptive strategy if defined
         adaptive_strategy = attempt.adaptive_strategy_chosen
         difficulty_level = None
+        numeric_difficulty_range = None  # For more precise filtering based on numeric difficulty
+        
+        # Check if we are using user-specific difficulty or global difficulty
+        use_user_specific = True  # Default to trying user-specific first
         
         if adaptive_strategy and question_id is not None:
+            # First, get user-specific difficulty of the current question if available
+            user_difficulty = None
+            if current_question:
+                user_difficulty = db.query(UserQuestionDifficulty).filter(
+                    UserQuestionDifficulty.user_id == current_user.user_id,
+                    UserQuestionDifficulty.question_id == current_question.question_id
+                ).first()
+                
+                logger.info(f"User-specific difficulty found: {user_difficulty is not None}")
+            
+            # Determine which difficulty level to use for the current question (user-specific or global)
+            question_difficulty_level = None
+            if user_difficulty and not user_difficulty.is_calibrating:
+                question_difficulty_level = user_difficulty.difficulty_level
+                logger.info(f"Using user-specific difficulty level: {question_difficulty_level}")
+            elif current_question:
+                question_difficulty_level = current_question.difficulty_level
+                logger.info(f"Using global difficulty level: {question_difficulty_level}")
+            
             if adaptive_strategy == "adaptive":
                 # True adaptive: harder if correct, easier if wrong
                 if was_correct:
                     # Move to harder difficulty
-                    if current_question.difficulty_level == "Easy":
+                    if question_difficulty_level == "Easy":
                         difficulty_level = "Medium"
-                    elif current_question.difficulty_level == "Medium":
+                        numeric_difficulty_range = (4, 6)  # Medium range
+                    elif question_difficulty_level == "Medium":
                         difficulty_level = "Hard"
+                        numeric_difficulty_range = (7, 10)  # Hard range
                     else:
                         difficulty_level = "Hard"
+                        numeric_difficulty_range = (7, 10)  # Hard range
                 else:
                     # Move to easier difficulty
-                    if current_question.difficulty_level == "Hard":
+                    if question_difficulty_level == "Hard":
                         difficulty_level = "Medium"
-                    elif current_question.difficulty_level == "Medium":
+                        numeric_difficulty_range = (4, 6)  # Medium range
+                    elif question_difficulty_level == "Medium":
                         difficulty_level = "Easy"
+                        numeric_difficulty_range = (0, 3)  # Easy range
                     else:
                         difficulty_level = "Easy"
+                        numeric_difficulty_range = (0, 3)  # Easy range
             elif adaptive_strategy == "easy_to_hard":
                 # Progressive difficulty
                 if questions_answered < max_questions * 0.33:
                     difficulty_level = "Easy"
+                    numeric_difficulty_range = (0, 3)
                 elif questions_answered < max_questions * 0.66:
                     difficulty_level = "Medium"
+                    numeric_difficulty_range = (4, 6)
                 else:
                     difficulty_level = "Hard"
+                    numeric_difficulty_range = (7, 10)
             elif adaptive_strategy == "hard_to_easy":
                 # Regressive difficulty
                 if questions_answered < max_questions * 0.33:
                     difficulty_level = "Hard"
+                    numeric_difficulty_range = (7, 10)
                 elif questions_answered < max_questions * 0.66:
                     difficulty_level = "Medium"
+                    numeric_difficulty_range = (4, 6)
                 else:
                     difficulty_level = "Easy"
+                    numeric_difficulty_range = (0, 3)
+          # Check if the user is in calibration phase (less than 10 questions attempted)
+        user_question_count = db.query(UserQuestionDifficulty).filter(
+            UserQuestionDifficulty.user_id == current_user.user_id
+        ).count()
         
-        # Filter by difficulty if specified
-        if difficulty_level:
-            logger.info(f"Applying difficulty filter: {difficulty_level}")
-            potential_questions = potential_questions.filter(Question.difficulty_level == difficulty_level)
-        
-        # Get all matching questions
-        matching_questions = potential_questions.all()
-          # If no questions with the ideal difficulty, fall back to any unanswered question
+        is_calibration_phase = user_question_count < 10
+        if is_calibration_phase:
+            logger.info(f"User is in calibration phase (only {user_question_count} questions answered)")
+            
+            # During calibration, we'll use a balanced mix of difficulties
+            # to get a baseline for the user's abilities
+            if questions_answered < max_questions * 0.33:
+                calibration_level = "Easy"
+            elif questions_answered < max_questions * 0.66:
+                calibration_level = "Medium"
+            else:
+                calibration_level = "Hard"
+                
+            logger.info(f"Using calibration difficulty level: {calibration_level}")
+            
+            # Get questions of the appropriate difficulty level that haven't been answered yet
+            potential_questions = potential_questions.filter(Question.difficulty_level == calibration_level)
+            matching_questions = potential_questions.all()
+            
+            logger.info(f"Found {len(matching_questions)} questions for calibration")
+            
+        # If not in calibration or no calibration questions found, use personalized selection
+        elif use_user_specific and difficulty_level:
+            logger.info(f"Searching for questions with user-specific difficulty level: {difficulty_level}")
+            
+            # Join with UserQuestionDifficulty to find questions with user-specific ratings
+            user_rated_questions = db.query(Question).join(
+                UserQuestionDifficulty,
+                (UserQuestionDifficulty.question_id == Question.question_id) & 
+                (UserQuestionDifficulty.user_id == current_user.user_id)
+            ).filter(
+                Question.question_id.notin_(answered_question_ids),
+                UserQuestionDifficulty.difficulty_level == difficulty_level,
+                UserQuestionDifficulty.is_calibrating == False  # Only use fully calibrated ratings
+            ).all()
+            
+            if user_rated_questions:
+                logger.info(f"Found {len(user_rated_questions)} questions with matching user-specific difficulty")
+                matching_questions = user_rated_questions
+            else:
+                logger.info("No user-specific difficulty matches, falling back to global difficulty")
+                # Fall back to global difficulty ratings
+                if difficulty_level:
+                    logger.info(f"Applying global difficulty filter: {difficulty_level}")
+                    potential_questions = potential_questions.filter(Question.difficulty_level == difficulty_level)
+                    matching_questions = potential_questions.all()
+        else:
+            # Use global difficulty ratings
+            if difficulty_level:
+                logger.info(f"Applying global difficulty filter: {difficulty_level}")
+                potential_questions = potential_questions.filter(Question.difficulty_level == difficulty_level)
+                matching_questions = potential_questions.all()
+          # Initialize matching_questions if not already set
+        if 'matching_questions' not in locals() or matching_questions is None:
+            # Get all matching questions using the potential_questions query
+            matching_questions = potential_questions.all()
+          
+        # If no questions with the ideal difficulty, fall back to any unanswered question
         if not matching_questions:
             logger.info("No questions match the ideal difficulty, falling back to any unanswered question")
             matching_questions = db.query(Question).filter(

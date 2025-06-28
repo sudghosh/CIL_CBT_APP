@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Container, Typography, Paper, CircularProgress, Button, Divider, Alert } from '@mui/material';
-import { GoogleLogin, CredentialResponse, GoogleOAuthProvider } from '@react-oauth/google';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logError } from '../utils/errorHandler';
-import { DEV_TOKEN, isDevMode } from '../utils/devMode';
-import { cacheAuthState } from '../utils/authCache';
+import { isDevMode } from '../utils/devMode';
 
 export const LoginPage: React.FC = (): JSX.Element => {
-  const { login, error: authError, clearError } = useAuth();
+  const { login, developmentLogin, error: authError, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -32,172 +31,37 @@ export const LoginPage: React.FC = (): JSX.Element => {
     }
   }, [location]);
   
-  // Development bypass login
-  const handleDevLogin = async () => {
+  // Development login handler
+  const handleDevLogin = useCallback(async () => {
     try {
-      // Check if we already have a token - avoid duplicate login attempts
-      const existingToken = localStorage.getItem('token');
-      if (existingToken === DEV_TOKEN) {
-        console.log('Already logged in with development token');
-        
-        // Still navigate to appropriate page
-        const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-        if (redirectUrl) {
-          console.log(`Redirecting to saved URL: ${redirectUrl}`);
-          sessionStorage.removeItem('redirectAfterLogin');
-          navigate(redirectUrl);
-        } else {
-          console.log('Redirecting to home page');
-          navigate('/');
-        }
-        
-        return;
-      }      setLoading(true);
+      setLoading(true);
       setError(null);
-      console.log('Attempting development login bypass...');
+      console.log('Attempting development login...');
       
-      // Try to fetch a token from the backend's development endpoint
-      try {
-        // First attempt to use the backend's dev login endpoint with timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-        
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/auth/dev-login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Development login succeeded via backend endpoint');
-          localStorage.setItem('token', data.access_token);
-          console.log('[DEBUG] Dev token set in localStorage (backend):', localStorage.getItem('token'));
-          await login({ token: data.access_token });
-          
-          // Redirect after successful login
-          const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-          if (redirectUrl) {
-            sessionStorage.removeItem('redirectAfterLogin');
-            navigate(redirectUrl);
-          } else {
-            navigate('/');
-          }
-        } else {
-          throw new Error(`Backend dev login failed with status: ${response.status}`);
-        }
-      } catch (err) {
-        console.warn('Backend dev login failed, using client-side dev token');
-        try {
-          localStorage.setItem('token', DEV_TOKEN);
-          console.log('[DEBUG] Dev token set in localStorage (client):', localStorage.getItem('token'));
-          
-          // Cache auth state before login to prevent immediate re-verification
-          sessionStorage.setItem('lastAuthCheck', Date.now().toString());
-          sessionStorage.setItem('lastAdminCheck', Date.now().toString());
-          
-          // Import cacheAuthState and mark the user as an admin in the cache
-          const mockUser = {
-            user_id: 1,
-            email: 'dev@example.com',
-            first_name: 'Development',
-            last_name: 'User',
-            role: 'Admin',
-            is_active: true,
-            isVerifiedAdmin: true
-          };
-          
-          // Cache auth state explicitly for development mode
-          if (typeof window !== 'undefined') {
-            // Store in session storage with long expiry
-            const item = {
-              value: true,
-              expires: Date.now() + (30 * 60 * 1000) // 30 minutes
-            };
-            sessionStorage.setItem('auth_cache', JSON.stringify(item));
-            sessionStorage.setItem('admin_check', JSON.stringify(item));
-            sessionStorage.setItem('user_cache', JSON.stringify({
-              value: mockUser,
-              expires: Date.now() + (30 * 60 * 1000)
-            }));
-          }
-          
-          // Use the login function to set up auth context properly
-          await login({ token: DEV_TOKEN });
-          // After login, check if token is still present
-          if (localStorage.getItem('token') !== DEV_TOKEN) {
-            console.warn('[DEBUG] Dev token missing from localStorage after login!');
-          }
-          console.log('Development login completed with client-side token');
-          
-          // Redirect appropriately
-          const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-          if (redirectUrl) {
-            sessionStorage.removeItem('redirectAfterLogin');
-            navigate(redirectUrl);
-          } else {
-            navigate('/');
-          }
-        } catch (clientErr) {
-          console.error('Client-side dev login failed:', clientErr);
-          throw clientErr; // Propagate the error to the outer catch
-        }
-      }    } catch (err: any) {
-      console.error('Development login failed completely:', err);
-      setError('Development login failed. Please try again or check console for errors.');
+      // Use the new development login function from context
+      await developmentLogin();
+      
+      console.log('Development login successful');
+      
+      // Redirect after successful login
+      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectUrl) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectUrl);
+      } else {
+        navigate('/');
+      }
+    } catch (err: any) {
+      console.error('Development login failed:', err);
+      setError(err.message || 'Development login failed');
     } finally {
       setLoading(false);
     }
-  };
+  }, [developmentLogin, navigate]);
   
-  // Auto-login in development mode - comment this out if you want to see the login page
-  useEffect(() => {
-    // Only execute once when component mounts to prevent flickering
-    const token = localStorage.getItem('token');
-    const hasLoggedIn = token === DEV_TOKEN || (token && token.length > 0);
-    const hasAttemptedAutoLogin = sessionStorage.getItem('devLoginAttempted') === 'true';
-    
-    if (isDevMode() && !hasLoggedIn && !hasAttemptedAutoLogin && !loading) {
-      // Skip auto-login if query param is set
-      const params = new URLSearchParams(window.location.search);      const skipAutoLogin = params.get('noautologin') === 'true';      if (!skipAutoLogin) {
-        console.log('Auto-logging in with development account...');
-        // Clear any previous auth-related session storage to avoid conflicts
-        sessionStorage.removeItem('authError');
-        sessionStorage.removeItem('redirectAfterLogin');
-        
-        // Reset any stored auth check timestamps to force fresh checks
-        sessionStorage.removeItem('lastAuthCheck');
-        sessionStorage.removeItem('lastAdminCheck');
-        sessionStorage.removeItem('auth_cache');
-        sessionStorage.removeItem('user_cache');
-        sessionStorage.removeItem('admin_check');
-        
-        // Mark that we've attempted auto-login to prevent duplicate attempts
-        sessionStorage.setItem('devLoginAttempted', 'true');
-        
-        // Add a small delay to ensure all components are mounted
-        const timer = setTimeout(() => {
-          handleDevLogin();
-        }, 500);
-        
-        return () => {
-          clearTimeout(timer);
-          // This ensures we can try again if the user logs out and comes back
-          // Only reset if we're actually navigating away, not on component updates
-          if (window.location.pathname !== '/login') {
-            sessionStorage.removeItem('devLoginAttempted');
-          }
-        };
-      }
-    }
-    
-    // Return empty cleanup function for cases where no timer was set
-    return () => {};
-  }, []);  const handleSuccess = async (credentialResponse: CredentialResponse) => {
+  // Remove auto-login - users must explicitly choose login method
+
+  const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
       setLoading(true);
       setError(null);
@@ -282,9 +146,18 @@ export const LoginPage: React.FC = (): JSX.Element => {
   };
 
   const handleError = () => {
-    setError('Google sign-in failed. Please try again.');
-    setGoogleLoadError(true);
     console.error('Google sign-in failed');
+    
+    // Check if this is a FedCM-related error
+    const isFedCMError = window.location.href.includes('localhost') && 
+                        navigator.userAgent.includes('Chrome');
+    
+    if (isFedCMError) {
+      setError('Google sign-in is restricted by browser policy. If you see this error, try: 1) Clicking "Development Login" below, or 2) Enabling third-party cookies in Chrome settings, or 3) Using a different browser.');
+    } else {
+      setError('Google sign-in failed. Please try again.');
+    }
+    setGoogleLoadError(true);
   };
 
   return (
@@ -342,7 +215,7 @@ export const LoginPage: React.FC = (): JSX.Element => {
                   <GoogleLogin
                     onSuccess={handleSuccess}
                     onError={handleError}
-                    useOneTap
+                    useOneTap={false}
                     theme="filled_blue"
                     size="large" 
                     type="standard"
