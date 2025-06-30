@@ -150,7 +150,7 @@ class TestAttemptResponse(BaseModel):
 async def create_test_template(
     template: TestTemplateBase,
     db: Session = Depends(get_db),
-    current_user: User = Depends(verify_admin)
+    current_user: User = Depends(verify_token)  # CHANGED from verify_admin to verify_token
 ):
     try:
         # Support both legacy format (direct paper_id, section_id) and new format (sections array)
