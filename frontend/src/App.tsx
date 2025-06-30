@@ -16,7 +16,7 @@ import { ResultsPage } from './pages/ResultsPage';
 import { QuestionManagement } from './pages/QuestionManagement';
 import { PaperManagement } from './pages/PaperManagement';
 import { UserManagement } from './pages/UserManagement';
-import { PerformanceDashboard } from './pages/PerformanceDashboard';
+import { PerformanceDashboard } from './pages/PerformanceDashboard/';
 import HealthCheck from './pages/HealthCheck';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevModeAuthFix } from './components/DevModeAuthFix';
@@ -281,14 +281,6 @@ const App: React.FC = () => {
                   element={
                     <AdminRoute>
                       <UserManagement />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="/performance-dashboard"
-                  element={
-                    <AdminRoute>
-                      <PerformanceDashboard />
                     </AdminRoute>
                   }
                 />

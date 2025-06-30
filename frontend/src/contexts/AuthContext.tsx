@@ -51,28 +51,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearError = () => setError(null);
 
   useEffect(() => {
-    // Initialize auth state - always start at login page (no auto-session restoration)
+    // Initialize auth state - check for existing valid authentication
     let isMounted = true;
     
     const initializeAuth = async () => {
       if (isMounted) {
-        console.log('[AuthContext] Initializing auth context - no auto-login');
+        console.log('[AuthContext] Initializing auth context - checking for existing auth');
         
-        // Clear any existing authentication state to ensure we start at login page
-        localStorage.removeItem('token');
-        sessionStorage.removeItem('auth_cache');
-        sessionStorage.removeItem('admin_check');
-        sessionStorage.removeItem('user_cache');
-        sessionStorage.removeItem('lastAuthCheck');
-        sessionStorage.removeItem('lastAdminCheck');
-        
-        // Always start with no user logged in
-        setUser(null);
-        setError(null);
-        setLoading(false);
-        setAuthChecked(true);
-        
-        console.log('[AuthContext] Initialization complete - user must explicitly log in');
+        try {
+          // Check for existing token in localStorage
+          const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+          
+          if (token && !isTokenExpired(token)) {
+            console.log('[AuthContext] Found valid token, attempting to restore session');
+            
+            // Check if it's a dev token
+            if (isDevToken(token)) {
+              console.log('[AuthContext] Restoring development session');
+              setUser(mockUser);
+              setError(null);
+              setLoading(false);
+              setAuthChecked(true);
+              
+              // Cache the auth state
+              cacheAuthState({...mockUser, isVerifiedAdmin: true});
+              
+              // Dispatch auth event
+              const authEvent = new CustomEvent('auth-status-changed', {
+                detail: { authenticated: true, user: mockUser }
+              });
+              window.dispatchEvent(authEvent);
+              return;
+            }
+            
+            // For regular tokens, try to get user info
+            try {
+              const userResponse = await authAPI.getCurrentUser();
+              const userInfo = userResponse.data as User;
+              if (isMounted && userInfo) {
+                console.log('[AuthContext] Successfully restored user session');
+                setUser(userInfo);
+                setError(null);
+                cacheAuthState(userInfo);
+                
+                // Dispatch auth event
+                const authEvent = new CustomEvent('auth-status-changed', {
+                  detail: { authenticated: true, user: userInfo }
+                });
+                window.dispatchEvent(authEvent);
+              }
+            } catch (error) {
+              console.log('[AuthContext] Token invalid or expired, clearing auth');
+              localStorage.removeItem('access_token');
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            }
+          } else {
+            console.log('[AuthContext] No valid token found, starting at login');
+            
+            // Clear any stale authentication state
+            localStorage.removeItem('token');
+            sessionStorage.removeItem('auth_cache');
+            sessionStorage.removeItem('admin_check');
+            sessionStorage.removeItem('user_cache');
+            sessionStorage.removeItem('lastAuthCheck');
+            sessionStorage.removeItem('lastAdminCheck');
+          }
+        } catch (error) {
+          console.error('[AuthContext] Error during initialization:', error);
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+            setAuthChecked(true);
+            console.log('[AuthContext] Initialization complete');
+          }
+        }
       }
     };
 

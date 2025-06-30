@@ -17,6 +17,7 @@ import { ChartFilter, ChartTimePeriod } from '../ChartFilter';
 import { ChartRestrictedAccess } from '../ChartRestrictedAccess';
 import { CHART_COLORS, CHART_MARGIN } from '../utils/chartConstants';
 import { ApiTimePeriod, DifficultyTrendsResponse } from '../../../types/visualizations';
+import { logChartApiError, logChartDataError } from '../../../utils/chartErrorLogger';
 
 interface DifficultyTrendsChartProps {
   /**
@@ -59,9 +60,24 @@ const DifficultyTrendsChart: React.FC<DifficultyTrendsChartProps> = ({
         setData(result);
         
         if (result.status === 'error') {
+          // Log the error for monitoring
+          logChartDataError(
+            'DifficultyTrendsChart',
+            result.message || 'Failed to load difficulty trends data',
+            { result, timePeriod }
+          );
+          
           setError(result.message || 'Failed to load difficulty trends data');
         }
       } catch (err) {
+        // Log the API error with context
+        logChartApiError(
+          'DifficultyTrendsChart',
+          '/performance/difficulty-trends',
+          err,
+          { timePeriod, enablePersonalization }
+        );
+        
         console.error('Error fetching difficulty trends:', err);
         setError('An unexpected error occurred while fetching difficulty trends data.');
       } finally {

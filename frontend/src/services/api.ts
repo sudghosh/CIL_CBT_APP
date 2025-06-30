@@ -20,7 +20,7 @@ import {
   TopicMasteryResponse,
   RecommendationsResponse,
   PerformanceComparisonResponse
-} from '../components/charts/types';
+} from '../components/charts_legacy/types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -770,11 +770,10 @@ export const testsAPI = {
 export const performanceAPI = {
   /**
    * Get a user's overall performance summary
-   * @param userId - User ID (optional, defaults to current user)
    * @returns Promise with UserOverallSummary data
    */
-  getOverallPerformance: (userId?: number) => {
-    const endpoint = userId ? `/performance/overall/${userId}` : '/performance/overall';
+  getOverallPerformance: () => {
+    const endpoint = '/performance/overall';
     return api.get(endpoint)
       .then(response => {
         console.log('Overall performance retrieved:', JSON.stringify(response.data, null, 2));
@@ -789,23 +788,20 @@ export const performanceAPI = {
   
   /**
    * Get a user's topic-specific performance data
-   * @param userId - User ID (optional, defaults to current user)
    * @param filters - Optional filters to limit results by paper, section, or difficulty
    * @returns Promise with array of UserTopicSummary data
    */
-  getTopicPerformance: (userId?: number, filters?: {
+  getTopicPerformance: (filters?: {
     paperId?: number;
     sectionId?: number;
     difficulty?: string;
   }) => {
-    const endpoint = userId ? `/performance/topics/${userId}` : '/performance/topics';
-    
+    const endpoint = '/performance/topics';
     // Build query parameters
     const params: any = {};
     if (filters?.paperId) params.paper_id = filters.paperId;
     if (filters?.sectionId) params.section_id = filters.sectionId;
     if (filters?.difficulty) params.difficulty = filters.difficulty;
-    
     return api.get(endpoint, { params })
       .then(response => {
         console.log('Topic performance retrieved:', JSON.stringify(response.data, null, 2));
@@ -820,11 +816,10 @@ export const performanceAPI = {
   
   /**
    * Get difficulty-based performance breakdown
-   * @param userId - User ID (optional, defaults to current user)
    * @returns Promise with difficulty performance data
    */
-  getDifficultyPerformance: (userId?: number) => {
-    const endpoint = userId ? `/performance/difficulty/${userId}` : '/performance/difficulty';
+  getDifficultyPerformance: () => {
+    const endpoint = '/performance/difficulty';
     return api.get(endpoint)
       .then(response => {
         console.log('Difficulty performance retrieved:', JSON.stringify(response.data, null, 2));
@@ -839,23 +834,20 @@ export const performanceAPI = {
   
   /**
    * Get time-based performance metrics
-   * @param userId - User ID (optional, defaults to current user)
    * @param filters - Optional filters to limit results
    * @returns Promise with time-based performance data
    */
-  getTimePerformance: (userId?: number, filters?: {
+  getTimePerformance: (filters?: {
     paperId?: number;
     difficulty?: string;
     timePeriod?: 'week' | 'month' | 'year';
   }) => {
-    const endpoint = userId ? `/performance/time/${userId}` : '/performance/time';
-    
+    const endpoint = '/performance/time';
     // Build query parameters
     const params: any = {};
     if (filters?.paperId) params.paper_id = filters.paperId;
     if (filters?.difficulty) params.difficulty = filters.difficulty;
     if (filters?.timePeriod) params.time_period = filters.timePeriod;
-    
     return api.get(endpoint, { params })
       .then(response => {
         console.log('Time performance retrieved:', JSON.stringify(response.data, null, 2));

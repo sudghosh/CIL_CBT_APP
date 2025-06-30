@@ -61,7 +61,8 @@ async def get_calibration_status(
         calibration_progress = (calibrated_questions / total_user_questions * 100) if total_user_questions > 0 else 0
         
         # Determine overall status
-        is_calibrated = total_user_questions >= 10 and calibrated_questions >= 5
+        # Reduced threshold: 8+ total questions and 3+ calibrated questions (more practical)
+        is_calibrated = total_user_questions >= 8 and calibrated_questions >= 3
         calibration_status = "calibrated" if is_calibrated else "calibrating"
         
         return {
@@ -152,7 +153,7 @@ async def get_calibration_details(
                 "hard": calculate_metrics(hard_questions)
             },
             "recent_questions": recent_question_info,
-            "is_calibrated": len(user_questions) >= 10 and sum(1 for q in user_questions if not q.is_calibrating) >= 5
+            "is_calibrated": len(user_questions) >= 8 and sum(1 for q in user_questions if not q.is_calibrating) >= 3
         }
     except Exception as e:
         logger.error(f"Error getting calibration details: {str(e)}")

@@ -672,12 +672,10 @@ async def get_difficulty_trends(
     
     Returns how user difficulty ratings have changed over time for different topics.
     
-    Note: While general difficulty trend data is available to all authenticated users,
-    personalized difficulty data is only available to users whose email is in the allowed list.
+    Data is automatically filtered to show only the authenticated user's data.
     """
     try:
-        # For personalized difficulty data, check if user's email is in the allowed list
-        is_allowed = check_email_whitelist(current_user.email, db)
+        logger.info(f"Fetching difficulty trends for user {current_user.email} (ID: {current_user.user_id})")
         
         # Calculate date range based on time_period
         today = datetime.utcnow()
@@ -701,24 +699,12 @@ async def get_difficulty_trends(
             UserQuestionDifficulty.question_id == Question.question_id
         )
         
-        # If user is allowed, show their personalized data, otherwise only show global data
-        if is_allowed:
-            # Filter for this user's specific data
-            query = query.filter(
-                UserQuestionDifficulty.user_id == current_user.user_id
-                # Note: Temporarily including calibrating records for demo purposes
-                # In production, would filter: UserQuestionDifficulty.is_calibrating == False
-            )
-        else:
-            # For non-allowed users, show only global aggregated data, not user-specific
-            return {
-                "status": "success",
-                "message": "Only general difficulty trend data is available. For personalized data, contact an administrator.",
-                "data": {
-                    "overall": get_global_difficulty_trends(db, start_date),
-                    "by_topic": {}
-                }
-            }
+        # Filter for this user's specific data only
+        query = query.filter(
+            UserQuestionDifficulty.user_id == current_user.user_id
+            # Note: Temporarily including calibrating records for demo purposes
+            # In production, would filter: UserQuestionDifficulty.is_calibrating == False
+        )
             
         # Apply date filter if specified
         if start_date:
@@ -870,19 +856,11 @@ async def get_topic_mastery(
     Shows how a user's mastery of different topics has evolved over time,
     based on performance in adaptive tests.
     
-    Note: Personalized topic mastery data is only available to the authenticated user
-    whose email is in the allowed list.
+    Data is automatically filtered to show only the authenticated user's data.
     """
     try:
-        # For personalized topic mastery data, check if user's email is in the allowed list
-        is_allowed = check_email_whitelist(current_user.email, db)
+        logger.info(f"Fetching topic mastery for user {current_user.email} (ID: {current_user.user_id})")
         
-        if not is_allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access to personalized topic mastery data is restricted to authorized users"
-            )
-            
         # Get all user's test attempts
         attempts = db.query(TestAttempt).filter(
             TestAttempt.user_id == current_user.user_id,
@@ -1064,38 +1042,11 @@ async def get_personalized_recommendations(
     Provides recommendations for topics to focus on, areas for improvement,
     and suggested questions to practice with visualization-friendly data.
     
-    Note: Personalized recommendations are only available to the authenticated user
-    whose email is in the allowed list.
+    Data is automatically filtered to show only the authenticated user's data.
     """
     try:
         logger.info(f"Fetching personalized recommendations for user {current_user.email} (ID: {current_user.user_id})")
         
-        # First, verify this is the user's own data
-        # Only allow users to access their own personalized recommendations
-        requested_user_id = current_user.user_id
-        
-        # Check if user's email is in the allowed list
-        try:
-            is_allowed = check_email_whitelist(current_user.email, db)
-        except Exception as e:
-            logger.error(f"Error checking email whitelist for user {current_user.email}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Unable to verify user permissions. Please try again later."
-            )
-        
-        if not is_allowed:
-            logger.warning(f"User {current_user.email} attempted to access personalized recommendations but is not in allowed list")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "message": "Access to personalized recommendations is restricted to authorized users",
-                    "instructions": "Please contact your administrator to request access to advanced performance features",
-                    "user_email": current_user.email,
-                    "access_type": "personalized_recommendations"
-                }
-            )
-            
         # 1. Get user performance data
         topic_summaries = db.query(UserTopicSummary).filter(
             UserTopicSummary.user_id == current_user.user_id
@@ -1283,38 +1234,13 @@ async def get_performance_comparison(
     
     Provides data to create radar charts, comparison bars, and other visualization types.
     
-    Note: Personalized performance comparison data is only available to the authenticated user
-    whose email is in the allowed list.
+    Data is automatically filtered to show only the authenticated user's data.
     """
     try:
         logger.info(f"Fetching performance comparison for user {current_user.email} (ID: {current_user.user_id})")
         
         # First, verify this is the user's own data
-        # Only allow users to access their own personalized data
-        requested_user_id = current_user.user_id
         
-        # Check if user's email is in the allowed list
-        try:
-            is_allowed = check_email_whitelist(current_user.email, db)
-        except Exception as e:
-            logger.error(f"Error checking email whitelist for user {current_user.email}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Unable to verify user permissions. Please try again later."
-            )
-        
-        if not is_allowed:
-            logger.warning(f"User {current_user.email} attempted to access performance comparison but is not in allowed list")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "message": "Access to personalized performance comparison is restricted to authorized users",
-                    "instructions": "Please contact your administrator to request access to advanced performance features",
-                    "user_email": current_user.email,
-                    "access_type": "performance_comparison"
-                }
-            )
-            
         # Get user's overall summary
         user_summary = db.query(UserOverallSummary).filter(
             UserOverallSummary.user_id == current_user.user_id

@@ -137,7 +137,8 @@ async def performance_aggregation_task(attempt_id: int):
                 user_question_difficulty.confidence = min(1.0, 0.1 + (user_question_difficulty.attempts * 0.05))
                 
                 # Update calibration status
-                if user_question_difficulty.attempts >= 5:
+                # Reduced threshold from 5 to 3 attempts for more practical calibration
+                if user_question_difficulty.attempts >= 3:
                     user_question_difficulty.is_calibrating = False
                 
                 # Update last attempted timestamp
