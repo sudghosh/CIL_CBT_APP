@@ -35,11 +35,12 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
     Verify and validate a JWT token for authentication.
     
     This function:
-    1. Decodes and validates the JWT token
-    2. Extracts claims (email, role, user_id)
-    3. Verifies the user exists in the database
-    4. Ensures the user account is active
-    5. Verifies role consistency between token and database
+    1. Handles development tokens in development mode
+    2. Decodes and validates the JWT token
+    3. Extracts claims (email, role, user_id)
+    4. Verifies the user exists in the database
+    5. Ensures the user account is active
+    6. Verifies role consistency between token and database
     
     Returns the authenticated User object if successful.
     """
@@ -51,6 +52,35 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
     
     # Log the token validation attempt
     print(f"Token verification started at {datetime.utcnow()}")
+    
+    # Check for development token in development mode
+    if os.environ.get("ENV") == "development" and token and token.startswith("devheader."):
+        print("Development token detected, handling in dev mode")
+        try:
+            # For development, create/get dev user
+            dev_email = "dev@example.com"
+            user = db.query(User).filter(User.email == dev_email).first()
+            
+            if user is None:
+                # Create development user if it doesn't exist
+                user = User(
+                    email=dev_email,
+                    first_name="Development",
+                    last_name="User",
+                    role="Admin",
+                    is_active=True
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                print(f"Created development user: {dev_email}")
+            
+            print(f"Development authentication successful: {user.email}, role: {user.role}")
+            return user
+            
+        except Exception as e:
+            print(f"Error handling development token: {str(e)}")
+            raise credentials_exception
     
     try:
         # Handle possible token format issues

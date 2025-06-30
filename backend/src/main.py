@@ -67,8 +67,8 @@ app.add_middleware(SlowAPIMiddleware)
 origins = ["http://localhost:3000"]
 # In development mode, allow all origins for easier debugging
 if os.environ.get("ENV") == "development" or os.environ.get("CORS_ALLOW_ALL") == "true":
-    origins = ["*"]
-    logger.info("Development mode: CORS configured to accept all origins")
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]  # Specific origins instead of wildcard
+    logger.info("Development mode: CORS configured for local development origins")
 
 logger.info(f"CORS origins configured: {origins}")  # Explicit log for CORS origins
 # IMPORTANT: For local development, ensure http://localhost:3000 is included in CORS_ORIGINS if using environment variables or config files.
@@ -78,8 +78,8 @@ logger.info(f"CORS origins configured: {origins}")  # Explicit log for CORS orig
 logger.info("Using standard FastAPI CORSMiddleware for CORS handling")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Use the origins variable for flexibility
-    allow_credentials=False,  # Must be False when using wildcard origin
+    allow_origins=origins,  # Use specific origins instead of wildcard
+    allow_credentials=True,  # Allow credentials since we're not using wildcard
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["Content-Type", "Authorization"],

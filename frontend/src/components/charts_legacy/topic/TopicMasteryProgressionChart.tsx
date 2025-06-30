@@ -24,6 +24,7 @@ import {
 import { performanceAPI } from '../../../services/api';
 import { ChartContainer } from '../ChartContainer';
 import { ChartRestrictedAccess } from '../ChartRestrictedAccess';
+import { logChartApiError, logChartDataError } from '../../../utils/chartErrorLogger';
 import { CHART_COLORS, CHART_MARGIN } from '../utils/chartConstants';
 import { getSeriesColors } from '../utils/chartHelpers';
 
@@ -80,6 +81,13 @@ const TopicMasteryProgressionChart: React.FC<TopicMasteryProgressionChartProps> 
         setData(result);
         
         if (result.status === 'error') {
+          // Log the error for monitoring
+          logChartDataError(
+            'TopicMasteryProgressionChart',
+            result.message || 'Unknown topic mastery error',
+            { result }
+          );
+          
           // Check if it's a no-data scenario vs actual error
           const isNoDataError = result.message?.toLowerCase().includes('no data') || 
                                 result.message?.toLowerCase().includes('not found') ||
@@ -102,6 +110,13 @@ const TopicMasteryProgressionChart: React.FC<TopicMasteryProgressionChartProps> 
           setSelectedTopics(sortedTopics);
         }
       } catch (err) {
+        // Log the API error with context
+        logChartApiError(
+          'TopicMasteryProgressionChart',
+          '/performance/topic-mastery',
+          err
+        );
+        
         console.error('Error fetching topic mastery:', err);
         
         // Determine error type for better user messaging

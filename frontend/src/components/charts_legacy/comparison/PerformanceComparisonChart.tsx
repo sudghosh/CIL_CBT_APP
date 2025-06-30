@@ -24,6 +24,7 @@ import { performanceAPI } from '../../../services/api';
 import { ChartContainer } from '../ChartContainer';
 import { ChartRestrictedAccess } from '../ChartRestrictedAccess';
 import { CHART_COLORS, CHART_MARGIN } from '../utils/chartConstants';
+import { logChartApiError, logChartDataError } from '../../../utils/chartErrorLogger';
 
 /**
  * Performance comparison data structure
@@ -113,9 +114,23 @@ const PerformanceComparisonChart: React.FC<PerformanceComparisonChartProps> = ({
         setData(result);
         
         if (result.status === 'error') {
+          // Log the error for monitoring
+          logChartDataError(
+            'PerformanceComparisonChart',
+            result.message || 'Failed to load performance comparison data',
+            { result }
+          );
+          
           setError(result.message || 'Failed to load performance comparison data');
         }
       } catch (err) {
+        // Log the API error with context
+        logChartApiError(
+          'PerformanceComparisonChart',
+          '/performance/comparison',
+          err
+        );
+        
         console.error('Error fetching performance comparison:', err);
         setError('An unexpected error occurred while fetching performance comparison data.');
       } finally {

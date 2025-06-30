@@ -35,9 +35,36 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { performanceAPI } from '../../../services/api';
 import { ChartContainer } from '../ChartContainer';
 import { ChartRestrictedAccess } from '../ChartRestrictedAccess';
+import { logChartApiError, logChartDataError } from '../../../utils/chartErrorLogger';
 
 /**
- * Recommendation data structure
+ * Backend recommendation data structure (actual API response)
+ */
+interface BackendRecommendation {
+  question_id: number;
+  question_text: string;
+  topic_name: string;
+  paper_id: number;
+  section_id: number;
+  difficulty: string;
+  user_difficulty?: number | null;
+  attempts: number;
+  correct_answers: number;
+  accuracy?: number | null;
+  recommendation_reason: string;
+}
+
+interface BackendRecommendationsData {
+  status: 'success' | 'error';
+  message?: string;
+  data: {
+    recommendations: BackendRecommendation[];
+    insights: any[];
+  } | null;
+}
+
+/**
+ * Frontend recommendation data structure (for visualization)
  */
 interface Recommendation {
   topic: string;
@@ -71,6 +98,97 @@ interface PersonalizedRecommendationDisplayProps {
 }
 
 /**
+ * Transform backend recommendation data to frontend visualization format
+ */
+const transformBackendData = (backendData: BackendRecommendationsData): RecommendationsData => {
+  if (backendData.status === 'error' || !backendData.data) {
+    return {
+      status: backendData.status,
+      message: backendData.message,
+      data: null
+    };
+  }
+
+  // Group recommendations by topic
+  const topicGroups = new Map<string, BackendRecommendation[]>();
+  
+  backendData.data.recommendations.forEach(rec => {
+    const topic = rec.topic_name;
+    if (!topicGroups.has(topic)) {
+      topicGroups.set(topic, []);
+    }
+    topicGroups.get(topic)!.push(rec);
+  });
+
+  // Transform each topic group into a recommendation
+  const transformedRecommendations: Recommendation[] = Array.from(topicGroups.entries()).map(([topic, questions]) => {
+    // Calculate metrics from questions
+    const totalAttempts = questions.reduce((sum, q) => sum + q.attempts, 0);
+    const totalCorrect = questions.reduce((sum, q) => sum + q.correct_answers, 0);
+    const avgAccuracy = totalAttempts > 0 ? (totalCorrect / totalAttempts) * 100 : 0;
+    
+    // Determine recommendation type based on performance
+    let recommendation_type: 'practice' | 'review' | 'focus';
+    if (avgAccuracy < 30) {
+      recommendation_type = 'focus';
+    } else if (avgAccuracy < 60) {
+      recommendation_type = 'review';
+    } else {
+      recommendation_type = 'practice';
+    }
+
+    // Calculate importance (inverse of accuracy - lower accuracy = higher importance)
+    const importance = Math.max(1, Math.min(10, Math.round(10 - (avgAccuracy / 10))));
+    
+    // Calculate improvement potential
+    const improvement_potential = Math.max(10, Math.min(100, Math.round(100 - avgAccuracy)));
+    
+    // Get difficulty level
+    const difficultyMap: { [key: string]: number } = {
+      'Easy': 3,
+      'Medium': 6,
+      'Hard': 9
+    };
+    const avgDifficulty = questions.reduce((sum, q) => {
+      return sum + (difficultyMap[q.difficulty] || 6);
+    }, 0) / questions.length;
+
+    // Create description based on performance
+    let description: string;
+    if (recommendation_type === 'focus') {
+      description = `Critical area requiring immediate attention. Your accuracy is ${avgAccuracy.toFixed(1)}% - focus on understanding core concepts.`;
+    } else if (recommendation_type === 'review') {
+      description = `Good progress but room for improvement. Your accuracy is ${avgAccuracy.toFixed(1)}% - review key concepts to boost performance.`;
+    } else {
+      description = `Strong performance area. Your accuracy is ${avgAccuracy.toFixed(1)}% - continue practicing to maintain excellence.`;
+    }
+
+    return {
+      topic: topic,
+      difficulty: Math.round(avgDifficulty),
+      importance: importance,
+      recommendation_type: recommendation_type,
+      description: description,
+      suggested_questions: questions.map(q => ({
+        id: q.question_id,
+        topic: q.topic_name,
+        difficulty: difficultyMap[q.difficulty] || 6
+      })),
+      improvement_potential: improvement_potential
+    };
+  });
+
+  return {
+    status: 'success',
+    message: backendData.message,
+    data: {
+      recommendations: transformedRecommendations,
+      insights: backendData.data.insights
+    }
+  };
+};
+
+/**
  * Component for displaying personalized test recommendations with visual elements
  */
 const PersonalizedRecommendationDisplay: React.FC<PersonalizedRecommendationDisplayProps> = ({
@@ -89,15 +207,26 @@ const PersonalizedRecommendationDisplay: React.FC<PersonalizedRecommendationDisp
       setError(null);
       
       try {
-        const result = await performanceAPI.getRecommendations(maxRecommendations);
-        setData(result);
+        // Get raw backend data
+        const backendResult = await performanceAPI.getRecommendations(maxRecommendations);
         
-        if (result.status === 'error') {
+        // Transform to frontend format
+        const transformedResult = transformBackendData(backendResult as BackendRecommendationsData);
+        setData(transformedResult);
+        
+        if (transformedResult.status === 'error') {
+          // Log the error for monitoring
+          logChartDataError(
+            'PersonalizedRecommendationDisplay',
+            transformedResult.message || 'Unknown recommendations error',
+            { backendResult, transformedResult }
+          );
+          
           // Check if it's a no-data scenario vs actual error
-          const isNoDataError = result.message?.toLowerCase().includes('no data') || 
-                                result.message?.toLowerCase().includes('not found') ||
-                                result.message?.toLowerCase().includes('no tests') ||
-                                result.message?.toLowerCase().includes('insufficient');
+          const isNoDataError = transformedResult.message?.toLowerCase().includes('no data') || 
+                                transformedResult.message?.toLowerCase().includes('not found') ||
+                                transformedResult.message?.toLowerCase().includes('no tests') ||
+                                transformedResult.message?.toLowerCase().includes('insufficient');
           
           if (isNoDataError) {
             setError('Personalized study recommendations will appear here. Complete a few tests to unlock tailored learning suggestions based on your performance patterns!');
@@ -106,6 +235,14 @@ const PersonalizedRecommendationDisplay: React.FC<PersonalizedRecommendationDisp
           }
         }
       } catch (err) {
+        // Log the API error with context
+        logChartApiError(
+          'PersonalizedRecommendationDisplay',
+          '/performance/recommendations',
+          err,
+          { maxRecommendations }
+        );
+        
         console.error('Error fetching recommendations:', err);
         
         // Determine error type for better user messaging
@@ -349,7 +486,7 @@ const PersonalizedRecommendationDisplay: React.FC<PersonalizedRecommendationDisp
           gap: 2
         }}>
           {/* Improvement potential bar chart */}
-          <Card elevation={1} variant="outlined" sx={{ p: 2, borderRadius: 2, overflow: 'visible' }}>
+          <Card variant="outlined" sx={{ p: 2, borderRadius: 2, overflow: 'visible' }}>
             <Typography variant="h6" gutterBottom sx={{ 
               fontWeight: 600, 
               color: 'primary.main',
@@ -416,7 +553,7 @@ const PersonalizedRecommendationDisplay: React.FC<PersonalizedRecommendationDisp
           </Card>
           
           {/* Topic Priority radial chart */}
-          <Card elevation={1} variant="outlined" sx={{ p: 2, borderRadius: 2, overflow: 'visible' }}>
+          <Card variant="outlined" sx={{ p: 2, borderRadius: 2, overflow: 'visible' }}>
             <Typography variant="h6" gutterBottom sx={{ 
               fontWeight: 600, 
               color: 'primary.main',

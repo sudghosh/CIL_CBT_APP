@@ -1,6 +1,9 @@
 import React from 'react';
-import { Box, CircularProgress, Typography, Alert, Paper } from '@mui/material';
+import { Box, CircularProgress, Typography, Alert, Paper, Button } from '@mui/material';
 import { ResponsiveContainer } from 'recharts';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import ChartErrorBoundary from './ChartErrorBoundary';
+import { logChartError } from '../../utils/chartErrorLogger';
 
 interface ChartContainerProps {
   /**
@@ -57,10 +60,21 @@ interface ChartContainerProps {
    * Additional actions to render above the chart (filters, controls, etc.)
    */
   actions?: React.ReactNode;
+  
+  /**
+   * Callback function to retry loading data when error occurs
+   */
+  onRetry?: () => void;
+  
+  /**
+   * Whether to enable error boundary for chart rendering errors
+   */
+  enableErrorBoundary?: boolean;
 }
 
 /**
  * A container component for charts that handles loading, error and empty states
+ * with enhanced error handling and logging capabilities
  */
 const ChartContainer: React.FC<ChartContainerProps> = ({
   title,
@@ -73,9 +87,43 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
   height = 350,
   accessibilityEnabled = true,
   ariaLabel,
-  actions
+  actions,
+  onRetry,
+  enableErrorBoundary = true
 }) => {
   const chartHeight = typeof height === 'number' ? height : 350;
+  
+  /**
+   * Enhanced error logging for chart issues
+   */
+  const logChartErrorWithContext = (errorType: string, details: any) => {
+    logChartError(
+      title,
+      details,
+      'data_error',
+      {
+        errorType,
+        chartHeight,
+        hasChildren: React.Children.count(children) > 0,
+        enableErrorBoundary
+      }
+    );
+  };
+  
+  /**
+   * Handle retry action with error logging
+   */
+  const handleRetry = () => {
+    console.log(`🔄 Retrying chart: ${title}`);
+    logChartErrorWithContext('retry_attempt', { timestamp: new Date().toISOString() });
+    
+    if (onRetry) {
+      onRetry();
+    } else {
+      // Fallback: reload the page
+      window.location.reload();
+    }
+  };
   
   // Determine what to render based on state
   let content;
@@ -94,10 +142,13 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
       </Box>
     );
   } else if (error) {
+    // Log the error for debugging
+    logChartErrorWithContext('Chart Data Error', error);
+    
     content = (
       <Box height={chartHeight} display="flex" alignItems="center" justifyContent="center">
         <Alert 
-          severity="info" 
+          severity="warning" 
           sx={{ 
             mb: 2, 
             maxWidth: '90%',
@@ -106,6 +157,18 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
               lineHeight: 1.5
             }
           }}
+          action={
+            onRetry && (
+              <Button 
+                color="inherit" 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={handleRetry}
+              >
+                Retry
+              </Button>
+            )
+          }
         >
           {error}
         </Alert>
@@ -129,7 +192,8 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
       </Box>
     );
   } else {
-    content = (
+    // Chart content with error boundary
+    const chartContent = (
       <Box
         height={chartHeight}
         sx={{
@@ -150,6 +214,13 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
         </ResponsiveContainer>
       </Box>
     );
+    
+    // Wrap with error boundary if enabled
+    content = enableErrorBoundary ? (
+      <ChartErrorBoundary chartName={title}>
+        {chartContent}
+      </ChartErrorBoundary>
+    ) : chartContent;
   }
 
   return (

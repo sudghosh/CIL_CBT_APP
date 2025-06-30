@@ -1,0 +1,1336 @@
+{
+  "timestamp": "2025-06-29T16:28:22.828718",
+  "tests": {
+    "authentication": true,
+    "dashboard_navigation": true,
+    "basic_content_loading": true,
+    "api_calls_initiated": true,
+    "error_boundaries_working": false,
+    "partial_content_display": true,
+    "overall_performance_visible": false
+  },
+  "api_calls": {
+    "successful": [
+      "http://localhost:8000/performance/topics",
+      "http://localhost:8000/performance/time?time_period=month",
+      "http://localhost:8000/performance/difficulty",
+      "http://localhost:8000/performance/overall",
+      "http://localhost:8000/performance/performance-comparison",
+      "http://localhost:8000/performance/recommendations?max_recommendations=5"
+    ],
+    "failed": [],
+    "total": 6
+  },
+  "console_logs": [
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+      "timestamp": "2025-06-29T16:28:29.536583"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Development tools initialized. Access them using window.devTools",
+      "timestamp": "2025-06-29T16:28:29.709389"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Available commands:",
+      "timestamp": "2025-06-29T16:28:29.711256"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.forceAdmin() - Force admin authentication",
+      "timestamp": "2025-06-29T16:28:29.716959"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.syncAuth() - Synchronize auth state (fixes navigation issues)",
+      "timestamp": "2025-06-29T16:28:29.719865"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.checkAuth() - Check current authentication state",
+      "timestamp": "2025-06-29T16:28:29.721647"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.resetAuth() - Reset all authentication data",
+      "timestamp": "2025-06-29T16:28:29.723193"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Authentication verification tools added to window.devTools",
+      "timestamp": "2025-06-29T16:28:29.725478"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.verify() - Generate a detailed auth verification report",
+      "timestamp": "2025-06-29T16:28:29.726938"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.quickCheck() - Run a quick check and fix common issues",
+      "timestamp": "2025-06-29T16:28:29.728229"
+    },
+    {
+      "type": "log",
+      "text": "Environment: development",
+      "timestamp": "2025-06-29T16:28:29.840769"
+    },
+    {
+      "type": "log",
+      "text": "API URL: http://localhost:8000",
+      "timestamp": "2025-06-29T16:28:29.842354"
+    },
+    {
+      "type": "log",
+      "text": "Google Client ID configured: true",
+      "timestamp": "2025-06-29T16:28:29.843749"
+    },
+    {
+      "type": "log",
+      "text": "Using cached health check result",
+      "timestamp": "2025-06-29T16:28:29.844789"
+    },
+    {
+      "type": "log",
+      "text": "Environment: development",
+      "timestamp": "2025-06-29T16:28:29.846376"
+    },
+    {
+      "type": "log",
+      "text": "API URL: http://localhost:8000",
+      "timestamp": "2025-06-29T16:28:29.849074"
+    },
+    {
+      "type": "log",
+      "text": "Google Client ID configured: true",
+      "timestamp": "2025-06-29T16:28:29.849982"
+    },
+    {
+      "type": "log",
+      "text": "[API] No token found for request: GET /health, restoring dev token",
+      "timestamp": "2025-06-29T16:28:29.851193"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using restored development token for request: GET /health",
+      "timestamp": "2025-06-29T16:28:29.853170"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /health {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:29.855069"
+    },
+    {
+      "type": "log",
+      "text": "API is healthy",
+      "timestamp": "2025-06-29T16:28:29.855920"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initializing auth context - checking for existing auth",
+      "timestamp": "2025-06-29T16:28:29.896051"
+    },
+    {
+      "type": "log",
+      "text": "Development token never expires",
+      "timestamp": "2025-06-29T16:28:29.903455"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Found valid token, attempting to restore session",
+      "timestamp": "2025-06-29T16:28:29.905457"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Restoring development session",
+      "timestamp": "2025-06-29T16:28:29.906738"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG] Caching admin status: true",
+      "timestamp": "2025-06-29T16:28:29.907904"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initialization complete",
+      "timestamp": "2025-06-29T16:28:29.909232"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: null, isAdmin: false, loading: true, authChecked: false, token: devheader.eyJzdWIiOiJkZXZAZXhhbXBsZS5jb20iLCJuYW1l\u2026OiJBZG1pbiIsImV4cCI6MTc1Mzc4NjcwOX0=.devsignature}",
+      "timestamp": "2025-06-29T16:28:29.915227"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initializing auth context - checking for existing auth",
+      "timestamp": "2025-06-29T16:28:29.919124"
+    },
+    {
+      "type": "log",
+      "text": "Development token never expires",
+      "timestamp": "2025-06-29T16:28:29.919961"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Found valid token, attempting to restore session",
+      "timestamp": "2025-06-29T16:28:29.920726"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Restoring development session",
+      "timestamp": "2025-06-29T16:28:29.921491"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG] Caching admin status: true",
+      "timestamp": "2025-06-29T16:28:29.923383"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initialization complete",
+      "timestamp": "2025-06-29T16:28:29.925052"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: null, isAdmin: false, loading: true, authChecked: false, token: devheader.eyJzdWIiOiJkZXZAZXhhbXBsZS5jb20iLCJuYW1l\u2026OiJBZG1pbiIsImV4cCI6MTc1Mzc4NjcwOX0=.devsignature}",
+      "timestamp": "2025-06-29T16:28:29.926126"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][ProtectedRoute] user: {user_id: 1, email: dev@example.com, first_name: Development, last_name: User, role: Admin} loading: false authChecked: true",
+      "timestamp": "2025-06-29T16:28:29.955498"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][ProtectedRoute] user: {user_id: 1, email: dev@example.com, first_name: Development, last_name: User, role: Admin} loading: false authChecked: true",
+      "timestamp": "2025-06-29T16:28:29.957644"
+    },
+    {
+      "type": "warning",
+      "text": "\u26a0\ufe0f React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "timestamp": "2025-06-29T16:28:30.152649"
+    },
+    {
+      "type": "warning",
+      "text": "\u26a0\ufe0f React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.",
+      "timestamp": "2025-06-29T16:28:30.154619"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: Object, isAdmin: true, loading: false, authChecked: true, token: devheader.eyJzdWIiOiJkZXZAZXhhbXBsZS5jb20iLCJuYW1l\u2026OiJBZG1pbiIsImV4cCI6MTc1Mzc4NjcwOX0=.devsignature}",
+      "timestamp": "2025-06-29T16:28:30.155587"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /health {status: healthy, database: connected, timestamp: 2025-06-29 10:58:29.946103}",
+      "timestamp": "2025-06-29T16:28:30.349635"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+      "timestamp": "2025-06-29T16:28:32.605343"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Development tools initialized. Access them using window.devTools",
+      "timestamp": "2025-06-29T16:28:32.742848"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Available commands:",
+      "timestamp": "2025-06-29T16:28:32.744333"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.forceAdmin() - Force admin authentication",
+      "timestamp": "2025-06-29T16:28:32.745530"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.syncAuth() - Synchronize auth state (fixes navigation issues)",
+      "timestamp": "2025-06-29T16:28:32.746839"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.checkAuth() - Check current authentication state",
+      "timestamp": "2025-06-29T16:28:32.749602"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.resetAuth() - Reset all authentication data",
+      "timestamp": "2025-06-29T16:28:32.750283"
+    },
+    {
+      "type": "log",
+      "text": "\ud83d\udd27 Authentication verification tools added to window.devTools",
+      "timestamp": "2025-06-29T16:28:32.750938"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.verify() - Generate a detailed auth verification report",
+      "timestamp": "2025-06-29T16:28:32.751490"
+    },
+    {
+      "type": "log",
+      "text": "  - window.devTools.quickCheck() - Run a quick check and fix common issues",
+      "timestamp": "2025-06-29T16:28:32.752080"
+    },
+    {
+      "type": "log",
+      "text": "Using cached API health status from the last 30 minutes",
+      "timestamp": "2025-06-29T16:28:32.901655"
+    },
+    {
+      "type": "log",
+      "text": "Using cached API health status from the last 30 minutes",
+      "timestamp": "2025-06-29T16:28:32.902706"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initializing auth context - checking for existing auth",
+      "timestamp": "2025-06-29T16:28:32.924528"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Found valid token, attempting to restore session",
+      "timestamp": "2025-06-29T16:28:32.926087"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: null, isAdmin: false, loading: true, authChecked: false, token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJia\u20263MTJ9.36UFAdtUEEJEodx7VMH-LOzGu432Vr3fSeeEhXe3Es8}",
+      "timestamp": "2025-06-29T16:28:32.927968"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initializing auth context - checking for existing auth",
+      "timestamp": "2025-06-29T16:28:32.942052"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Found valid token, attempting to restore session",
+      "timestamp": "2025-06-29T16:28:32.943250"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: null, isAdmin: false, loading: true, authChecked: false, token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJia\u20263MTJ9.36UFAdtUEEJEodx7VMH-LOzGu432Vr3fSeeEhXe3Es8}",
+      "timestamp": "2025-06-29T16:28:32.951502"
+    },
+    {
+      "type": "log",
+      "text": "[ApiRetry] Adding token to request: GET /auth/me",
+      "timestamp": "2025-06-29T16:28:32.954599"
+    },
+    {
+      "type": "log",
+      "text": "[ApiRetry] Adding token to request: GET /auth/me",
+      "timestamp": "2025-06-29T16:28:32.956426"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Successfully restored user session",
+      "timestamp": "2025-06-29T16:28:33.161971"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG] Caching admin status: true",
+      "timestamp": "2025-06-29T16:28:33.164268"
+    },
+    {
+      "type": "log",
+      "text": "[AuthContext] Initialization complete",
+      "timestamp": "2025-06-29T16:28:33.165833"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][ProtectedRoute] user: {email: binty.ghosh@gmail.com, first_name: Sudipto, last_name: Ghosh, user_id: 1, role: Admin} loading: false authChecked: true",
+      "timestamp": "2025-06-29T16:28:33.174975"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][ProtectedRoute] user: {email: binty.ghosh@gmail.com, first_name: Sudipto, last_name: Ghosh, user_id: 1, role: Admin} loading: false authChecked: true",
+      "timestamp": "2025-06-29T16:28:33.176440"
+    },
+    {
+      "type": "warning",
+      "text": "\u26a0\ufe0f React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "timestamp": "2025-06-29T16:28:33.458846"
+    },
+    {
+      "type": "warning",
+      "text": "\u26a0\ufe0f React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.",
+      "timestamp": "2025-06-29T16:28:33.459862"
+    },
+    {
+      "type": "log",
+      "text": "[DEBUG][AuthContext] Rendered with: {user: Object, isAdmin: true, loading: false, authChecked: true, token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJia\u20263MTJ9.36UFAdtUEEJEodx7VMH-LOzGu432Vr3fSeeEhXe3Es8}",
+      "timestamp": "2025-06-29T16:28:33.460674"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.500257"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/difficulty-trends {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.501942"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.503221"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/topic-mastery {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.504902"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.506156"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/performance-comparison {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.507762"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.508814"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/recommendations {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.510019"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.511055"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/overall {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.512598"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.516473"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/topics {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.517862"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.518793"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/difficulty {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.519778"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.520926"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/time {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.522549"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.523579"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /admin/allowed-emails {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.524464"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.526428"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/difficulty-trends {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.527972"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.529227"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/topic-mastery {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.537013"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.539071"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/performance-comparison {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.540778"
+    },
+    {
+      "type": "log",
+      "text": "[API] Using token for request: eyJhbGciOi...",
+      "timestamp": "2025-06-29T16:28:33.541831"
+    },
+    {
+      "type": "log",
+      "text": "[API] Request: GET /performance/recommendations {transitional: Object, adapter: Array(3), transformRequest: Array(1), transformResponse: Array(1), timeout: 20000}",
+      "timestamp": "2025-06-29T16:28:33.542942"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/admin/allowed-emails' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.615272"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.620911"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.622246"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.623291"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /admin/allowed-emails, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.624807"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.611Z",
+      "timestamp": "2025-06-29T16:28:33.626166"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.627477"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.628475"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/difficulty-trends?time_period=month' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.629828"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.638337"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.639816"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.642014"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/difficulty-trends, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.642969"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.618Z",
+      "timestamp": "2025-06-29T16:28:33.644138"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.645082"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get difficulty trends: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchDifficultyTrends (http://localhost:3000/static/js/bundle.js:164700:24)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchDifficultyTrends (http://localhost:3000/static/js/bundle.js:164700:24)",
+      "timestamp": "2025-06-29T16:28:33.646381"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: DifficultyTrendsChart [data_error]",
+      "timestamp": "2025-06-29T16:28:33.652483"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713621-jwb70q0t8",
+      "timestamp": "2025-06-29T16:28:33.656185"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve difficulty trends",
+      "timestamp": "2025-06-29T16:28:33.657882"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.621Z",
+      "timestamp": "2025-06-29T16:28:33.659868"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"result\": {\n    \"status\": \"error\",\n    \"messag\u2026y_topic\": {}\n    }\n  },\n  \"timePeriod\": \"month\"\n}}",
+      "timestamp": "2025-06-29T16:28:33.661673"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.669996"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.674386"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.684076"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.685062"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/topic-mastery' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.685761"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.690186"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.691996"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.693809"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/topic-mastery, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.695155"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.633Z",
+      "timestamp": "2025-06-29T16:28:33.702165"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.704636"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get topic mastery: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchTopicMastery (http://localhost:3000/static/js/bundle.js:166116:24)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchTopicMastery (http://localhost:3000/static/js/bundle.js:166116:24)",
+      "timestamp": "2025-06-29T16:28:33.706704"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: TopicMasteryProgressionChart [data_error]",
+      "timestamp": "2025-06-29T16:28:33.708453"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713636-an2b0cdn9",
+      "timestamp": "2025-06-29T16:28:33.709991"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve topic mastery data",
+      "timestamp": "2025-06-29T16:28:33.712457"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.636Z",
+      "timestamp": "2025-06-29T16:28:33.717317"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"result\": {\n    \"status\": \"error\",\n    \"messag\u2026: {},\n      \"mastery_progression\": []\n    }\n  }\n}}",
+      "timestamp": "2025-06-29T16:28:33.718579"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.721806"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.723138"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.724275"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.725419"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/difficulty-trends?time_period=month' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.726379"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.727918"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.729079"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.733658"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/difficulty-trends, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.735203"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.656Z",
+      "timestamp": "2025-06-29T16:28:33.736741"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.738867"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get difficulty trends: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchDifficultyTrends (http://localhost:3000/static/js/bundle.js:164700:24)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchDifficultyTrends (http://localhost:3000/static/js/bundle.js:164700:24)",
+      "timestamp": "2025-06-29T16:28:33.741358"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: DifficultyTrendsChart [data_error]",
+      "timestamp": "2025-06-29T16:28:33.742679"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713658-hwnx9p6c5",
+      "timestamp": "2025-06-29T16:28:33.744444"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve difficulty trends",
+      "timestamp": "2025-06-29T16:28:33.745591"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.658Z",
+      "timestamp": "2025-06-29T16:28:33.750084"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"result\": {\n    \"status\": \"error\",\n    \"messag\u2026y_topic\": {}\n    }\n  },\n  \"timePeriod\": \"month\"\n}}",
+      "timestamp": "2025-06-29T16:28:33.752097"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.756183"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.757435"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.758844"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.771519"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/topic-mastery' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.773840"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.775344"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.777016"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.779242"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/topic-mastery, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.781417"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.665Z",
+      "timestamp": "2025-06-29T16:28:33.793812"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.794708"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get topic mastery: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchTopicMastery (http://localhost:3000/static/js/bundle.js:166116:24)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchTopicMastery (http://localhost:3000/static/js/bundle.js:166116:24)",
+      "timestamp": "2025-06-29T16:28:33.795674"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: TopicMasteryProgressionChart [data_error]",
+      "timestamp": "2025-06-29T16:28:33.806012"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713667-hksa0lrz9",
+      "timestamp": "2025-06-29T16:28:33.808385"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve topic mastery data",
+      "timestamp": "2025-06-29T16:28:33.822858"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.667Z",
+      "timestamp": "2025-06-29T16:28:33.823879"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"result\": {\n    \"status\": \"error\",\n    \"messag\u2026: {},\n      \"mastery_progression\": []\n    }\n  }\n}}",
+      "timestamp": "2025-06-29T16:28:33.824952"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.826866"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.827902"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.828927"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.833783"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/performance-comparison' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.838141"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.839293"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.840445"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.841444"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/performance-comparison, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.842433"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.670Z",
+      "timestamp": "2025-06-29T16:28:33.843429"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.844220"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get performance comparison: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchPerformanceComparison (http://localhost:3000/static/js/bundle.js:164000:24)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchPerformanceComparison (http://localhost:3000/static/js/bundle.js:164000:24)",
+      "timestamp": "2025-06-29T16:28:33.845852"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: PerformanceComparisonChart [data_error]",
+      "timestamp": "2025-06-29T16:28:33.848691"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713672-7k04fqu5l",
+      "timestamp": "2025-06-29T16:28:33.853397"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve performance comparison data",
+      "timestamp": "2025-06-29T16:28:33.856542"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.672Z",
+      "timestamp": "2025-06-29T16:28:33.857315"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"result\": {\n    \"status\": \"error\",\n    \"messag\u2026  \"average_time\": 0\n        }\n      }\n    }\n  }\n}}",
+      "timestamp": "2025-06-29T16:28:33.859226"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.860904"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.861929"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.862986"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.866781"
+    },
+    {
+      "type": "error",
+      "text": "Access to XMLHttpRequest at 'http://localhost:8000/performance/recommendations?max_recommendations=5' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "timestamp": "2025-06-29T16:28:33.867835"
+    },
+    {
+      "type": "error",
+      "text": "API Error Details: {message: Network Error, status: undefined, data: undefined, config: Object}",
+      "timestamp": "2025-06-29T16:28:33.868901"
+    },
+    {
+      "type": "startGroup",
+      "text": "Application Error",
+      "timestamp": "2025-06-29T16:28:33.869886"
+    },
+    {
+      "type": "error",
+      "text": "Error: AxiosError",
+      "timestamp": "2025-06-29T16:28:33.871901"
+    },
+    {
+      "type": "error",
+      "text": "Context: {url: /performance/recommendations, method: get, status: undefined, devMode: true, devToken: false}",
+      "timestamp": "2025-06-29T16:28:33.873438"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.676Z",
+      "timestamp": "2025-06-29T16:28:33.874734"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.875983"
+    },
+    {
+      "type": "error",
+      "text": "Failed to get recommendations: NetworkError: Network connection error. Please check your internet connection.\n    at handleAPIError (http://localhost:3000/static/js/bundle.js:183945:12)\n    at http://localhost:3000/static/js/bundle.js:181300:76\n    at async Axios.request (http://localhost:3000/static/js/bundle.js:52213:14)\n    at async fetchRecommendations (http://localhost:3000/static/js/bundle.js:165173:31)\n    at Axios.request (http://localhost:3000/static/js/bundle.js:52217:41)\n    at async fetchRecommendations (http://localhost:3000/static/js/bundle.js:165173:31)",
+      "timestamp": "2025-06-29T16:28:33.878799"
+    },
+    {
+      "type": "startGroup",
+      "text": "\ud83d\udd25 Chart Error: PersonalizedRecommendationDisplay [data_error]",
+      "timestamp": "2025-06-29T16:28:33.885769"
+    },
+    {
+      "type": "error",
+      "text": "Error ID: chart-error-1751194713679-xrgaltwd5",
+      "timestamp": "2025-06-29T16:28:33.886812"
+    },
+    {
+      "type": "error",
+      "text": "Message: Could not retrieve recommendations",
+      "timestamp": "2025-06-29T16:28:33.887746"
+    },
+    {
+      "type": "error",
+      "text": "Timestamp: 2025-06-29T10:58:33.679Z",
+      "timestamp": "2025-06-29T16:28:33.888647"
+    },
+    {
+      "type": "error",
+      "text": "Additional Context: {invalidData: {\n  \"backendResult\": {\n    \"status\": \"error\",\n    \u2026retrieve recommendations\",\n    \"data\": null\n  }\n}}",
+      "timestamp": "2025-06-29T16:28:33.890167"
+    },
+    {
+      "type": "error",
+      "text": "User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "timestamp": "2025-06-29T16:28:33.891544"
+    },
+    {
+      "type": "error",
+      "text": "URL: http://localhost:3000/performance-dashboard",
+      "timestamp": "2025-06-29T16:28:33.893307"
+    },
+    {
+      "type": "endGroup",
+      "text": "console.groupEnd",
+      "timestamp": "2025-06-29T16:28:33.894110"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "timestamp": "2025-06-29T16:28:33.895078"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/topics [Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object]",
+      "timestamp": "2025-06-29T16:28:34.492468"
+    },
+    {
+      "type": "log",
+      "text": "Topic performance retrieved: [\n  {\n    \"topic\": \"Labor Laws\",\n    \"total_questions\": 11,\n    \"correct_answers\": 0,\n    \"accuracy_percentage\": 0,\n    \"avg_response_time_seconds\": 4.454545454545454\n  },\n  {\n    \"topic\": \"Industrial Relations\",\n    \"total_questions\": 9,\n    \"correct_answers\": 9,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 4\n  },\n  {\n    \"topic\": \"Strategic Management\",\n    \"total_questions\": 12,\n    \"correct_answers\": 7,\n    \"accuracy_percentage\": 66.66666666666666,\n    \"avg_response_time_seconds\": 15.25\n  },\n  {\n    \"topic\": \"Organizational Behavior\",\n    \"total_questions\": 9,\n    \"correct_answers\": 9,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 11.333333333333334\n  },\n  {\n    \"topic\": \"History\",\n    \"total_questions\": 9,\n    \"correct_answers\": 9,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 3.777777777777777\n  },\n  {\n    \"topic\": \"HRM\",\n    \"total_questions\": 10,\n    \"correct_answers\": 10,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 5.300000000000001\n  },\n  {\n    \"topic\": \"Current Affairs\",\n    \"total_questions\": 19,\n    \"correct_answers\": 19,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 5.315789473684211\n  },\n  {\n    \"topic\": \"Verbal Reasoning\",\n    \"total_questions\": 5,\n    \"correct_answers\": 5,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 3.4000000000000004\n  },\n  {\n    \"topic\": \"Non-verbal Reasoning\",\n    \"total_questions\": 10,\n    \"correct_answers\": 0,\n    \"accuracy_percentage\": 0,\n    \"avg_response_time_seconds\": 3.2\n  },\n  {\n    \"topic\": \"Geography\",\n    \"total_questions\": 5,\n    \"correct_answers\": 5,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 4.4\n  },\n  {\n    \"topic\": \"Data Interpretation\",\n    \"total_questions\": 19,\n    \"correct_answers\": 0,\n    \"accuracy_percentage\": 0,\n    \"avg_response_time_seconds\": 3.789473684210526\n  },\n  {\n    \"topic\": \"Management Principles\",\n    \"total_questions\": 7,\n    \"correct_answers\": 7,\n    \"accuracy_percentage\": 100,\n    \"avg_response_time_seconds\": 11.428571428571427\n  }\n]",
+      "timestamp": "2025-06-29T16:28:34.493685"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/time [Object, Object, Object, Object, Object, Object, Object, Object, Object, Object]",
+      "timestamp": "2025-06-29T16:28:34.496716"
+    },
+    {
+      "type": "log",
+      "text": "Time performance retrieved: [\n  {\n    \"date\": \"2025-06-02\",\n    \"accuracy\": 34.6\n  },\n  {\n    \"date\": \"2025-06-05\",\n    \"accuracy\": 52.2\n  },\n  {\n    \"date\": \"2025-06-08\",\n    \"accuracy\": 60.1\n  },\n  {\n    \"date\": \"2025-06-11\",\n    \"accuracy\": 39.6\n  },\n  {\n    \"date\": \"2025-06-14\",\n    \"accuracy\": 55.7\n  },\n  {\n    \"date\": \"2025-06-17\",\n    \"accuracy\": 43.6\n  },\n  {\n    \"date\": \"2025-06-20\",\n    \"accuracy\": 41.3\n  },\n  {\n    \"date\": \"2025-06-23\",\n    \"accuracy\": 49\n  },\n  {\n    \"date\": \"2025-06-26\",\n    \"accuracy\": 53.5\n  },\n  {\n    \"date\": \"2025-06-29\",\n    \"accuracy\": 43.9\n  }\n]",
+      "timestamp": "2025-06-29T16:28:34.502851"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/overall {total_tests_taken: 11, total_questions_attempted: 125, total_correct_answers: 57, avg_score_percentage: 45.60000000000001, avg_response_time_seconds: 6.248000000000001}",
+      "timestamp": "2025-06-29T16:28:34.512038"
+    },
+    {
+      "type": "log",
+      "text": "Overall performance retrieved: {\n  \"total_tests_taken\": 11,\n  \"total_questions_attempted\": 125,\n  \"total_correct_answers\": 57,\n  \"avg_score_percentage\": 45.60000000000001,\n  \"avg_response_time_seconds\": 6.248000000000001,\n  \"easy_questions_accuracy\": 0,\n  \"medium_questions_accuracy\": 56.58914728682171,\n  \"hard_questions_accuracy\": 26.19047619047619,\n  \"last_updated\": \"2025-06-28 16:34:59.430625+00:00\",\n  \"adaptive_tests_count\": 10,\n  \"non_adaptive_tests_count\": 1,\n  \"adaptive_avg_score\": 41.333333333333336,\n  \"non_adaptive_avg_score\": 70,\n  \"data_status\": \"complete\",\n  \"message\": \"Performance data is up to date\"\n}",
+      "timestamp": "2025-06-29T16:28:34.514394"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/difficulty {easy: Object, medium: Object, hard: Object}",
+      "timestamp": "2025-06-29T16:28:34.525359"
+    },
+    {
+      "type": "log",
+      "text": "Difficulty performance retrieved: {\n  \"easy\": {\n    \"questions_count\": 0,\n    \"correct\": 0,\n    \"accuracy\": 0\n  },\n  \"medium\": {\n    \"questions_count\": 62,\n    \"correct\": 38,\n    \"accuracy\": 56.58914728682171\n  },\n  \"hard\": {\n    \"questions_count\": 63,\n    \"correct\": 19,\n    \"accuracy\": 26.19047619047619\n  }\n}",
+      "timestamp": "2025-06-29T16:28:34.526511"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/performance-comparison {status: success, message: Insufficient data for performance comparison, data: Object}",
+      "timestamp": "2025-06-29T16:28:34.528261"
+    },
+    {
+      "type": "log",
+      "text": "Performance comparison retrieved: {\n  \"status\": \"success\",\n  \"message\": \"Insufficient data for performance comparison\",\n  \"data\": {\n    \"total_users\": 1,\n    \"message\": \"Not enough users have completed tests to provide meaningful comparison data\"\n  }\n}",
+      "timestamp": "2025-06-29T16:28:34.532203"
+    },
+    {
+      "type": "log",
+      "text": "API Response: 200 /performance/recommendations {status: success, data: Object}",
+      "timestamp": "2025-06-29T16:28:34.537206"
+    },
+    {
+      "type": "log",
+      "text": "Recommendations retrieved: {\n  \"status\": \"success\",\n  \"data\": {\n    \"recommendations\": [\n      {\n        \"question_id\": 37,\n        \"question_text\": \"Sample question 2 for Industrial Relations\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - HR Concepts\",\n        \"paper_id\": 1,\n        \"section_id\": 3,\n        \"difficulty\": \"Easy\",\n        \"user_difficulty\": null,\n        \"attempts\": 0,\n        \"correct_answers\": 0,\n        \"accuracy\": null,\n        \"recommendation_reason\": \"New question\"\n      },\n      {\n        \"question_id\": 31,\n        \"question_text\": \"Sample question 1 for HRM\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - HR Concepts\",\n        \"paper_id\": 1,\n        \"section_id\": 3,\n        \"difficulty\": \"Easy\",\n        \"user_difficulty\": 6,\n        \"attempts\": 1,\n        \"correct_answers\": 0,\n        \"accuracy\": 0,\n        \"recommendation_reason\": \"Needs improvement\"\n      },\n      {\n        \"question_id\": 41,\n        \"question_text\": \"Sample question 1 for Labor Laws\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - HR Concepts\",\n        \"paper_id\": 1,\n        \"section_id\": 3,\n        \"difficulty\": \"Easy\",\n        \"user_difficulty\": 6,\n        \"attempts\": 1,\n        \"correct_answers\": 0,\n        \"accuracy\": 0,\n        \"recommendation_reason\": \"Needs improvement\"\n      },\n      {\n        \"question_id\": 19,\n        \"question_text\": \"Sample question 4 for Verbal Reasoning\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - Reasoning & Mental Ability\",\n        \"paper_id\": 1,\n        \"section_id\": 2,\n        \"difficulty\": \"Easy\",\n        \"user_difficulty\": null,\n        \"attempts\": 0,\n        \"correct_answers\": 0,\n        \"accuracy\": null,\n        \"recommendation_reason\": \"New question\"\n      },\n      {\n        \"question_id\": 23,\n        \"question_text\": \"Sample question 3 for Non-verbal Reasoning\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - Reasoning & Mental Ability\",\n        \"paper_id\": 1,\n        \"section_id\": 2,\n        \"difficulty\": \"Easy\",\n        \"user_difficulty\": null,\n        \"attempts\": 0,\n        \"correct_answers\": 0,\n        \"accuracy\": null,\n        \"recommendation_reason\": \"New question\"\n      }\n    ],\n    \"insights\": [\n      {\n        \"type\": \"weak_topic\",\n        \"topic_name\": \"CIL HR Mock Test Paper 1 - HR Concepts\",\n        \"message\": \"Focus on improving your performance in CIL HR Mock Test Paper 1 - HR Concepts where your accuracy is 0.0%\",\n        \"accuracy\": 0,\n        \"paper_id\": 1,\n        \"section_id\": 3\n      },\n      {\n        \"type\": \"multiple_weak_topics\",\n        \"topic_names\": [\n          \"CIL HR Mock Test Paper 1 - HR Concepts\",\n          \"CIL HR Mock Test Paper 1 - Reasoning & Mental Ability\",\n          \"CIL HR Mock Test Paper 1 - Reasoning & Mental Ability\"\n        ],\n        \"message\": \"Consider creating a practice test focusing on: CIL HR Mock Test Paper 1 - HR Concepts, CIL HR Mock Test Paper 1 - Reasoning & Mental Ability, CIL HR Mock Test Paper 1 - Reasoning & Mental Ability\"\n      }\n    ]\n  }\n}",
+      "timestamp": "2025-06-29T16:28:34.539887"
+    }
+  ],
+  "errors": [],
+  "network_activity": [
+    {
+      "type": "request",
+      "url": "http://localhost:3000/",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:25.948935"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:3000/",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:26.246265"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:3000/static/js/bundle.js",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:26.267334"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:3000/static/js/bundle.js",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:29.056806"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/health",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:29.859660"
+    },
+    {
+      "type": "request",
+      "url": "https://accounts.google.com/gsi/client",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:29.918264"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/health",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:30.347986"
+    },
+    {
+      "type": "response",
+      "url": "https://accounts.google.com/gsi/client",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:31.092437"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:3000/performance-dashboard",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:32.417971"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:3000/performance-dashboard",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:32.487581"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:3000/static/js/bundle.js",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:32.512261"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:3000/static/js/bundle.js",
+      "status": 304,
+      "timestamp": "2025-06-29T16:28:32.577753"
+    },
+    {
+      "type": "request",
+      "url": "https://accounts.google.com/gsi/client",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:32.930259"
+    },
+    {
+      "type": "response",
+      "url": "https://accounts.google.com/gsi/client",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:32.933923"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/auth/me",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:32.957305"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/auth/me",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:32.958775"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/auth/me",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:33.129292"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/auth/me",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:33.161105"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/difficulty-trends?time_period=month",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.544052"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/topic-mastery",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.545005"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/performance-comparison",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.545782"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/recommendations?max_recommendations=5",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.548373"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/overall",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.550914"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/topics",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.551796"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/difficulty",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.553696"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/time?time_period=month",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.554611"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/admin/allowed-emails",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.555368"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/difficulty-trends?time_period=month",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.556287"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/topic-mastery",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.557204"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/performance-comparison",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.558732"
+    },
+    {
+      "type": "request",
+      "url": "http://localhost:8000/performance/recommendations?max_recommendations=5",
+      "method": "GET",
+      "timestamp": "2025-06-29T16:28:33.559523"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/topics",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.488691"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/time?time_period=month",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.489913"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/difficulty",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.507590"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/overall",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.508879"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/performance-comparison",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.510814"
+    },
+    {
+      "type": "response",
+      "url": "http://localhost:8000/performance/recommendations?max_recommendations=5",
+      "status": 200,
+      "timestamp": "2025-06-29T16:28:34.536367"
+    }
+  ]
+}
