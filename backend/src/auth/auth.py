@@ -64,6 +64,7 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
             if user is None:
                 # Create development user if it doesn't exist
                 user = User(
+                    google_id="dev-google-id-123",  # Dummy google_id for development
                     email=dev_email,
                     first_name="Development",
                     last_name="User",

@@ -17,6 +17,61 @@ from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from .database import Base
 from .user_question_difficulty_model import UserQuestionDifficulty
+from enum import Enum
+from sqlalchemy.types import TypeDecorator, LargeBinary, Enum as SqlEnum
+from cryptography.fernet import Fernet, InvalidToken
+import enum
+import os
+
+# --- API Key Management Models ---
+
+class APIKeyType(enum.Enum):
+    GOOGLE = "google"
+    OPENROUTER = "openrouter"
+    A4F = "a4f"
+    # Add more key types as needed
+
+class EncryptedField(TypeDecorator):
+    impl = LargeBinary
+    cache_ok = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        key = os.environ.get("API_KEY_ENCRYPTION_KEY")
+        if not key:
+            raise RuntimeError("API_KEY_ENCRYPTION_KEY environment variable must be set.")
+        self.fernet = Fernet(key)
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.encode()
+        return self.fernet.encrypt(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return self.fernet.decrypt(value).decode()
+        except InvalidToken:
+            return None
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True)
+    key_type = Column(SqlEnum(APIKeyType, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
+    encrypted_key = Column(EncryptedField, nullable=False)
+    description = Column(String, nullable=True)
+    created_by_admin_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    created_by = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("key_type", name="uq_api_key_type"),
+    )
 
 class User(Base):
     __tablename__ = "users"

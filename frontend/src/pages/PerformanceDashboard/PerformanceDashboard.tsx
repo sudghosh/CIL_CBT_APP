@@ -30,6 +30,11 @@ import QuizIcon from '@mui/icons-material/Quiz';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TimerIcon from '@mui/icons-material/Timer';
 import { PerformanceDashboardEnhanced } from './PerformanceDashboardEnhanced';
+import { 
+  AITrendAnalysisTab, 
+  AIPerformanceInsightsTab, 
+  AIQuestionRecommendationsTab 
+} from './components/AIPerformanceTabs';
 
 /**
  * Tab panel component for dashboard sections
@@ -92,6 +97,7 @@ export const PerformanceDashboard: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="dashboard tabs">
           <Tab label="Performance Dashboard" id="dashboard-tab-0" aria-controls="dashboard-tabpanel-0" />
           <Tab label="Enhanced Performance Dashboard" id="dashboard-tab-1" aria-controls="dashboard-tabpanel-1" />
+          <Tab label="AI Performance Insights" id="dashboard-tab-2" aria-controls="dashboard-tabpanel-2" />
         </Tabs>
       </Box>
       {/* Tab 1: Legacy Dashboard */}
@@ -354,6 +360,61 @@ export const PerformanceDashboard: React.FC = () => {
       {/* Tab 2: Enhanced Dashboard */}
       <TabPanel value={tabValue} index={1}>
         <PerformanceDashboardEnhanced />
+      </TabPanel>
+      
+      {/* Tab 3: AI Performance Insights */}
+      <TabPanel value={tabValue} index={2}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            AI-Powered Performance Insights
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+            Leverage artificial intelligence to gain deeper insights into your performance patterns, 
+            get personalized recommendations, and discover optimization opportunities.
+          </Typography>
+          
+          {/* AI Trend Analysis Tab */}
+          <AITrendAnalysisTab 
+            userId={user?.user_id || 0} 
+            userPerformanceData={data?.trends?.accuracyTrend?.map(point => ({
+              date: point.date,
+              score: point.value,
+              topic: 'General',
+              difficulty: 5,
+              timeSpent: 0,
+              questionCount: 0
+            })) || []}
+            onRetry={refetch}
+          />
+          
+          {/* AI Performance Insights Tab */}
+          <AIPerformanceInsightsTab 
+            userId={user?.user_id || 0} 
+            userPerformanceData={data?.topicPerformance?.map(topic => ({
+              date: new Date().toISOString().split('T')[0],
+              score: topic.accuracyPercentage,
+              topic: topic.topic,
+              difficulty: 5,
+              timeSpent: 0,
+              questionCount: topic.totalQuestions
+            })) || []}
+            onRetry={refetch}
+          />
+          
+          {/* AI Question Recommendations Tab */}
+          <AIQuestionRecommendationsTab 
+            userId={user?.user_id || 0} 
+            userPerformanceData={data?.topicPerformance?.map(topic => ({
+              date: new Date().toISOString().split('T')[0],
+              score: topic.accuracyPercentage,
+              topic: topic.topic,
+              difficulty: 5,
+              timeSpent: 0,
+              questionCount: topic.totalQuestions
+            })) || []}
+            onRetry={refetch}
+          />
+        </Box>
       </TabPanel>
     </Box>
   );

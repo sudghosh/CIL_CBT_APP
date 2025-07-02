@@ -132,6 +132,22 @@ const transformDifficultyMetrics = (data: any): DifficultyMetrics => {
 };
 
 const transformPerformanceTrends = (data: any, period: TimePeriod): PerformanceTrends => {
+  // Handle case where data is directly an array from the /performance/time endpoint
+  if (Array.isArray(data)) {
+    const accuracyTrend = data.map(point => ({
+      date: point.date,
+      value: point.accuracy || 0
+    }));
+    
+    return {
+      period,
+      accuracyTrend,
+      speedTrend: [], // No speed data available yet
+      difficultyTrend: [], // No difficulty trend data available yet
+    };
+  }
+  
+  // Handle case where data has nested structure
   return {
     period,
     accuracyTrend: data?.accuracyTrend || data?.accuracy_trend || [],
@@ -260,11 +276,11 @@ export const usePerformanceData = (options: UsePerformanceDataOptions = {}): Use
     return () => clearInterval(interval);
   }, [refetchInterval, enabled, fetchOverallPerformance, fetchTopicPerformance, fetchDifficultyPerformance, fetchTrendsPerformance]);
 
-  // Compute combined states
-  const isLoading = overallQuery.isLoading || topicsQuery.isLoading || difficultyQuery.isLoading || trendsQuery.isLoading;
+  // Compute combined states (trends data is non-critical)
+  const isLoading = overallQuery.isLoading || topicsQuery.isLoading || difficultyQuery.isLoading;
   const isRefetching = isLoading && (overallQuery.data || topicsQuery.data || difficultyQuery.data || trendsQuery.data);
-  const isError = overallQuery.isError || topicsQuery.isError || difficultyQuery.isError || trendsQuery.isError;
-  const error = overallQuery.error || topicsQuery.error || difficultyQuery.error || trendsQuery.error;
+  const isError = overallQuery.isError || topicsQuery.isError || difficultyQuery.isError;
+  const error = overallQuery.error || topicsQuery.error || difficultyQuery.error;
 
   // Combine data into DashboardData structure
   const combinedData: DashboardData | null = useMemo(() => {
