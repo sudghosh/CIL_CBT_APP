@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -14,7 +14,7 @@ ENV NODE_ENV=$NODE_ENV \
     NODE_OPTIONS="--max-old-space-size=4096"
 
 # Install dependencies for build
-RUN apk add --no-cache python3 make g++ \
+RUN apk add --no-cache python3 make g++ curl \
     && npm install -g npm@latest
 
 # Copy package files
@@ -32,7 +32,7 @@ COPY . .
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Development stage
-FROM node:18-alpine AS development
+FROM node:20-alpine AS development
 
 # Set working directory and create non-root user
 WORKDIR /app
@@ -66,7 +66,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=5 \
-    CMD wget -q -O - http://localhost:3000 || exit 1
+    CMD curl -f http://localhost:3000 || exit 1
 
 # Expose port
 EXPOSE 3000

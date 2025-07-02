@@ -9,8 +9,8 @@ import {
   ExitToApp, 
   Brightness4, 
   Brightness7,
-  Timeline,
   Assessment,
+  VpnKey,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,6 +38,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     ...(isAdmin ? [
       { text: 'Question Bank', icon: <Description />, path: '/questions' },
       { text: 'Papers & Sections', icon: <Description />, path: '/papers' },
+      { text: 'API Key Management', icon: <VpnKey />, path: '/admin/api-keys' },
       { text: 'Users', icon: <Person />, path: '/manage/users' },
     ] : []),
   ];

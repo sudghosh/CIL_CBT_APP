@@ -21,6 +21,7 @@ import HealthCheck from './pages/HealthCheck';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevModeAuthFix } from './components/DevModeAuthFix';
 import { NavigationAuthGuard } from './components/NavigationAuthGuard';
+import ApiKeyAdminPage from './pages/ApiKeyAdminPage';
 
 // Theme is now managed by ThemeContext
 
@@ -281,6 +282,14 @@ const App: React.FC = () => {
                   element={
                     <AdminRoute>
                       <UserManagement />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/api-keys"
+                  element={
+                    <AdminRoute>
+                      <ApiKeyAdminPage />
                     </AdminRoute>
                   }
                 />
