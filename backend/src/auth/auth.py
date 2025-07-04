@@ -13,7 +13,8 @@ load_dotenv()
 
 ***REMOVED*** = os.getenv("***REMOVED***", "your-secret-key")
 ALGORITHM = "HS256"
-***REMOVED***_EXPIRE_MINUTES = 480  # Extended to 8 hours from 30 minutes
+# Handle empty environment variable safely
+***REMOVED***_EXPIRE_MINUTES = int(os.getenv("***REMOVED***_EXPIRE_MINUTES") or "240")  # Default 4 hours
 
 oauth2_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl="https://accounts.google.com/o/oauth2/v2/auth",

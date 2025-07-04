@@ -83,8 +83,8 @@ services:
       - ./.env.dev
     environment:
       ***REMOVED***_FILE: /run/secrets/secret_key
-      ALGORITHM: ${ALGORITHM}
-      ***REMOVED***_EXPIRE_MINUTES: ${***REMOVED***_EXPIRE_MINUTES}
+      ALGORITHM: HS256
+      ***REMOVED***_EXPIRE_MINUTES: 240
       ***REMOVED***_FILE: /run/secrets/google_client_id
       ***REMOVED***_FILE: /run/secrets/google_client_secret
       POSTGRES_HOST: postgres

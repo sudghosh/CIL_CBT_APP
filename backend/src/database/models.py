@@ -216,6 +216,7 @@ class TestTemplate(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, default=True, index=True)
+    difficulty_strategy = Column(String, default="balanced")  # New field for personalized question selection
 
     # Enhanced relationships
     sections = relationship("TestTemplateSection", back_populates="template", cascade="all, delete-orphan")

@@ -1,5 +1,5 @@
 """
-Script to test the papers API using the authentication token.
+Script to test the papers API using direct authentication.
 """
 import requests
 import json
@@ -10,13 +10,16 @@ def test_papers_api():
     BASE_URL = "http://localhost:8000"
     
     try:
-        # Load the token from auth_token.json
-        with open("auth_token.json", "r") as f:
-            token_data = json.load(f)
-            token = token_data.get('access_token')
-            
-        if not token:
-            print("Error: No token found in auth_token.json")
+        # Authenticate directly
+        print("🔐 Authenticating...")
+        auth_response = requests.post(f"{BASE_URL}/auth/dev-login", 
+                                    json={"email": "test@example.com", "password": "test123"})
+        
+        if auth_response.status_code == 200:
+            token = auth_response.json()['access_token']
+            print("✅ Authentication successful")
+        else:
+            print(f"❌ Authentication failed: {auth_response.status_code}")
             return
             
         # Set up headers with token
@@ -27,21 +30,36 @@ def test_papers_api():
         
         # Test the papers endpoint
         print("Testing papers API endpoint...")
-        response = requests.get(f"{BASE_URL}/api/papers/", headers=headers)
         
-        # Print the response
-        print(f"Status code: {response.status_code}")
-        if response.status_code == 200:
-            data = response.json()
-            print(f"Success! Retrieved {data.get('total', 0)} papers")
-            for idx, paper in enumerate(data.get('items', [])):
-                print(f"{idx+1}. Paper ID: {paper.get('paper_id')}, Name: {paper.get('paper_name')}")
-        else:
-            print("Error accessing papers API")
-            try:
-                print(f"Error: {json.dumps(response.json(), indent=2)}")
-            except:
-                print(f"Response: {response.text}")
+        # Try multiple possible endpoints
+        endpoints_to_try = [
+            "/papers/",
+            "/papers", 
+            "/admin/papers/",
+            "/admin/papers",
+            "/api/papers/",
+            "/api/papers"
+        ]
+        
+        for endpoint in endpoints_to_try:
+            print(f"Trying endpoint: {endpoint}")
+            response = requests.get(f"{BASE_URL}{endpoint}", headers=headers)
+            print(f"Status code: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                papers_count = len(data.get('items', [])) if 'items' in data else len(data) if isinstance(data, list) else 0
+                print(f"✅ Success! Retrieved {papers_count} papers from {endpoint}")
+                
+                # Show first few papers
+                papers = data.get('items', []) if 'items' in data else data if isinstance(data, list) else []
+                for idx, paper in enumerate(papers[:3]):
+                    print(f"  {idx+1}. Paper ID: {paper.get('paper_id')}, Name: {paper.get('paper_name')}")
+                return endpoint, data
+            else:
+                print(f"  Failed: {response.status_code}")
+                
+        print("❌ No working papers endpoint found")
                 
     except Exception as e:
         print(f"Error testing papers API: {str(e)}")

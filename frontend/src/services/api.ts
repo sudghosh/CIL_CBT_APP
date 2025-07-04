@@ -13,7 +13,12 @@ import {
   OverallSummary,
   TopicSummary,
   ChartTimePeriod,
-  ApiTimePeriod
+  ApiTimePeriod,
+  CreateTestTemplateRequest,
+  TestTemplate,
+  StartTestRequest,
+  TestAttempt,
+  DifficultyStrategy
 } from '../types';
 import {
   DifficultyTrendsResponse,
@@ -450,10 +455,16 @@ export const questionsAPI = {
 
 // Tests API
 export const testsAPI = {
-  getTemplates: () => api.get('/tests/templates'),  createTemplate: (data: any) => {
+  getTemplates: () => api.get('/tests/templates'),
+  
+  createTemplate: (data: CreateTestTemplateRequest) => {
     console.log('Creating template with data:', JSON.stringify(data, null, 2));
-      // Ensure data is in proper format for backend
-    const normalizedData = { ...data };
+    
+    // Ensure data is in proper format for backend
+    const normalizedData: CreateTestTemplateRequest = { 
+      ...data,
+      difficulty_strategy: data.difficulty_strategy || 'balanced' // Default strategy
+    };
     
     // Make sure template_name and test_type are always included
     if (!normalizedData.template_name) {
@@ -464,33 +475,18 @@ export const testsAPI = {
       normalizedData.test_type = "Practice";
     }
     
-    // Handle both formats - ensure sections array exists even if legacy format
-    if (!normalizedData.sections) {
-      // If old format is used (paper_id directly), create sections array
-      if (normalizedData.paper_id) {
-        normalizedData.sections = [
-          {
-            paper_id: normalizedData.paper_id,
-            section_id: normalizedData.section_id || null,
-            subsection_id: normalizedData.subsection_id || null,
-            question_count: normalizedData.question_count || 10
-          }
-        ];
-      } else {
-        // If neither format provided, initialize empty array
-        normalizedData.sections = [];
-      }
+    // Ensure sections array exists
+    if (!normalizedData.sections || !Array.isArray(normalizedData.sections)) {
+      normalizedData.sections = [];
     }
-      // Make sure we always have the sections array properly formatted for the backend
-    if (normalizedData.sections && Array.isArray(normalizedData.sections)) {
-      // Make sure each section uses the proper field names
-      normalizedData.sections = normalizedData.sections.map((section: any) => ({
-        paper_id: section.paper_id,
-        section_id: section.section_id, // Backend will map this to section_id_ref
-        subsection_id: section.subsection_id || null,
-        question_count: section.question_count
-      }));
-    }
+    
+    // Make sure each section uses the proper field names
+    normalizedData.sections = normalizedData.sections.map(section => ({
+      paper_id: section.paper_id,
+      section_id: section.section_id, // Backend will map this to section_id_ref
+      subsection_id: section.subsection_id || null,
+      question_count: section.question_count
+    }));
     
     // For debugging
     console.log('Sending normalized template data:', JSON.stringify(normalizedData, null, 2));

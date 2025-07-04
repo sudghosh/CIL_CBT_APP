@@ -4,6 +4,7 @@ import { CssBaseline, Box, LinearProgress, Typography, Button } from '@mui/mater
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SessionProvider } from './contexts/SessionContext';
 import { authAPI } from './services/api';
 import { isDevMode, isDevToken } from './utils/devMode';
 import { cacheAuthState } from './utils/authCache';
@@ -213,11 +214,12 @@ const App: React.FC = () => {
           <CssBaseline />
           <AuthProvider>
             <BrowserRouter>
-              {/* Dev mode auth fix button - only appears in development mode */}
-              <DevModeAuthFix />
-              {/* Auth state guard for navigation - maintains consistent auth state */}
-              <NavigationAuthGuard />
-              <Routes>
+              <SessionProvider>
+                {/* Dev mode auth fix button - only appears in development mode */}
+                <DevModeAuthFix />
+                {/* Auth state guard for navigation - maintains consistent auth state */}
+                <NavigationAuthGuard />
+                <Routes>
                 <Route path="/health" element={<HealthCheck />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route
@@ -293,8 +295,8 @@ const App: React.FC = () => {
                     </AdminRoute>
                   }
                 />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+                <Route path="*" element={<Navigate to="/" replace />} />                </Routes>
+              </SessionProvider>
             </BrowserRouter>
           </AuthProvider>
         </ThemeProvider>

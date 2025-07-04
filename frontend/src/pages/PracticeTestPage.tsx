@@ -32,6 +32,7 @@ import { useNavigate } from 'react-router-dom';
 import { testsAPI, papersAPI } from '../services/api';
 import { TestInterface } from '../components/TestInterface';
 import { AdaptiveTestInterface } from '../components/AdaptiveTestInterface';
+import { CreateTestTemplateRequest } from '../types';
 
 interface Section {
   section_id: number;
@@ -248,15 +249,14 @@ export const PracticeTestPage: React.FC = () => {
         setLoading(false);
         return;
       }      // Create a template from the selected sections
-      const templateData = {
+      const templateData: CreateTestTemplateRequest = {
         template_name: `Practice Test - ${new Date().toISOString()}`,
         test_type: "Practice",
         sections: selectedSections.map(section => ({
           paper_id: section.paper_id,
           section_id: section.section_id,
           question_count: section.question_count
-        })),
-        duration_minutes: testDuration
+        }))
       };
 
       // Create the template
