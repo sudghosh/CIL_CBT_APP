@@ -54,6 +54,177 @@ from ..tasks.performance_aggregator import performance_aggregation_task
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+def get_personalized_questions(
+    db: Session, 
+    user_id: int, 
+    paper_id: int, 
+    section_id: Optional[int], 
+    subsection_id: Optional[int],
+    question_count: int,
+    difficulty_strategy: str = "balanced"
+) -> List[Question]:
+    """
+    Select questions for mock tests based on user's historical performance.
+    
+    Args:
+        db: Database session
+        user_id: ID of the user taking the test
+        paper_id: Paper ID for question selection
+        section_id: Section ID (can be None for all sections)
+        subsection_id: Subsection ID (can be None)
+        question_count: Number of questions needed (up to 100 per paper)
+        difficulty_strategy: One of 'hard_to_easy', 'easy_to_hard', 'balanced', 'random'
+    
+    Returns:
+        List of Question objects selected based on user performance and strategy
+    """
+    from datetime import date
+    
+    # Base query for valid questions
+    base_query = db.query(Question).filter(
+        Question.paper_id == paper_id,
+        Question.valid_until >= date.today()
+    )
+    
+    if section_id:
+        base_query = base_query.filter(Question.section_id == section_id)
+    if subsection_id:
+        base_query = base_query.filter(Question.subsection_id == subsection_id)
+    
+    # Get user's question difficulty data
+    user_difficulties = db.query(UserQuestionDifficulty).filter(
+        UserQuestionDifficulty.user_id == user_id
+    ).all()
+    
+    # Create a mapping of question_id to user performance data
+    user_question_map = {uqd.question_id: uqd for uqd in user_difficulties}
+    
+    # Get all available questions
+    all_questions = base_query.all()
+    
+    if not all_questions:
+        logger.warning(f"No questions found for paper_id={paper_id}, section_id={section_id}")
+        return []
+    
+    logger.info(f"Found {len(all_questions)} total questions for personalized selection")
+    
+    # Categorize questions based on user performance
+    difficult_questions = []  # Questions user answered incorrectly or found difficult
+    easy_questions = []       # Questions user answered correctly consistently
+    new_questions = []        # Questions user hasn't attempted yet
+    
+    for question in all_questions:
+        user_data = user_question_map.get(question.question_id)
+        
+        if not user_data:
+            # User hasn't attempted this question yet
+            new_questions.append(question)
+        else:
+            # Calculate user's performance on this question
+            if user_data.attempts == 0:
+                new_questions.append(question)
+            else:
+                success_rate = user_data.correct_answers / user_data.attempts
+                
+                # Consider questions with < 60% success rate as difficult
+                if success_rate < 0.6 or user_data.difficulty_level == 'hard':
+                    difficult_questions.append(question)
+                else:
+                    easy_questions.append(question)
+    
+    logger.info(f"Question categorization: {len(difficult_questions)} difficult, "
+                f"{len(easy_questions)} easy, {len(new_questions)} new")
+    
+    # Select questions based on difficulty strategy
+    selected_questions = []
+    
+    if difficulty_strategy == "hard_to_easy":
+        # Prioritize difficult questions, then new, then easy
+        selected_questions.extend(difficult_questions)
+        selected_questions.extend(new_questions)
+        selected_questions.extend(easy_questions)
+        
+    elif difficulty_strategy == "easy_to_hard":
+        # Prioritize easy questions, then new, then difficult
+        selected_questions.extend(easy_questions)
+        selected_questions.extend(new_questions)
+        selected_questions.extend(difficult_questions)
+        
+    elif difficulty_strategy == "balanced":
+        # Mix of all types, prioritizing difficult and new questions
+        # 50% difficult/new, 30% new questions, 20% easy for review
+        target_difficult = int(question_count * 0.5)
+        target_new = int(question_count * 0.3)
+        target_easy = question_count - target_difficult - target_new
+        
+        selected_questions.extend(difficult_questions[:target_difficult])
+        selected_questions.extend(new_questions[:target_new])
+        selected_questions.extend(easy_questions[:target_easy])
+        
+        # Fill remaining slots with any available questions
+        remaining_needed = question_count - len(selected_questions)
+        if remaining_needed > 0:
+            remaining_questions = [q for q in all_questions if q not in selected_questions]
+            selected_questions.extend(remaining_questions[:remaining_needed])
+            
+    elif difficulty_strategy == "random":
+        # Random selection from all available questions
+        import random
+        selected_questions = random.sample(all_questions, min(question_count, len(all_questions)))
+    
+    else:
+        # Default to balanced if unknown strategy
+        logger.warning(f"Unknown difficulty strategy: {difficulty_strategy}, using balanced")
+        return get_personalized_questions(db, user_id, paper_id, section_id, subsection_id, 
+                                        question_count, "balanced")
+    
+    # If we need more questions than available, repeat questions
+    # Prioritize repeating difficult questions first
+    if len(selected_questions) < question_count:
+        needed = question_count - len(selected_questions)
+        
+        # First repeat difficult questions
+        repeat_questions = difficult_questions.copy()
+        if not repeat_questions:
+            repeat_questions = all_questions.copy()
+        
+        # Remove already selected questions from repeat pool
+        repeat_pool = [q for q in repeat_questions if q not in selected_questions]
+        
+        # If still not enough, repeat any questions
+        if len(repeat_pool) < needed:
+            repeat_pool = all_questions.copy()
+        
+        # Add repeated questions (allowing duplicates since we need to reach the target count)
+        import random
+        random.shuffle(repeat_pool)
+        
+        # Allow duplicates to reach the target count
+        questions_to_add = []
+        while len(questions_to_add) < needed:
+            # Keep cycling through the pool until we have enough
+            pool_cycle = repeat_pool.copy()
+            random.shuffle(pool_cycle)
+            for q in pool_cycle:
+                if len(questions_to_add) >= needed:
+                    break
+                questions_to_add.append(q)
+        
+        selected_questions.extend(questions_to_add[:needed])
+        
+        logger.info(f"Repeated {needed} questions to reach target count of {question_count}")
+    
+    # Limit to requested count
+    selected_questions = selected_questions[:question_count]
+    
+    # Shuffle the final list to avoid predictable patterns
+    import random
+    random.shuffle(selected_questions)
+    
+    logger.info(f"Selected {len(selected_questions)} questions using {difficulty_strategy} strategy")
+    
+    return selected_questions
+
 router = APIRouter(prefix="/tests", tags=["tests"])
 
 TestStatusEnum = Literal["InProgress", "Completed", "Abandoned"]
@@ -96,6 +267,7 @@ class TestTemplateBase(BaseModel):
     template_name: str = Field(..., min_length=3, max_length=100)
     test_type: TestTypeEnum
     sections: List[TestTemplateSectionBase] = Field(default=[])
+    difficulty_strategy: Optional[str] = Field(default="balanced")  # New field for personalized question selection
 
 class TestTemplateResponse(TestTemplateBase):
     template_id: int
@@ -236,7 +408,8 @@ async def create_test_template(
         db_template = TestTemplate(
             template_name=template.template_name,
             test_type=template.test_type,
-            created_by_user_id=current_user.user_id
+            created_by_user_id=current_user.user_id,
+            difficulty_strategy=getattr(template, 'difficulty_strategy', 'balanced')  # Handle difficulty strategy
         )
         db.add(db_template)
         db.flush() # Use flush to get the template_id before committing
@@ -614,8 +787,26 @@ async def start_test(
             total_available = query.count()
             logger.info(f"Total available questions before limit: {total_available}")
             
-            # Apply random order and limit
-            section_questions = query.order_by(func.random()).limit(section.question_count).all()
+            # Use personalized question selection for Mock tests, random for others
+            if template.test_type == "Mock" and hasattr(template, 'difficulty_strategy'):
+                logger.info(f"🎯 PERSONALIZED SELECTION: Using strategy '{template.difficulty_strategy}' for Mock test (user_id={current_user.user_id})")
+                print(f"🎯 PERSONALIZED SELECTION: Using strategy '{template.difficulty_strategy}' for Mock test (user_id={current_user.user_id})")
+                section_questions = get_personalized_questions(
+                    db=db,
+                    user_id=current_user.user_id,
+                    paper_id=section.paper_id,
+                    section_id=section.section_id_ref,
+                    subsection_id=section.subsection_id,
+                    question_count=section.question_count,
+                    difficulty_strategy=template.difficulty_strategy or "balanced"
+                )
+                logger.info(f"🎯 PERSONALIZED RESULT: Selected {len(section_questions)} questions using {template.difficulty_strategy} strategy")
+                print(f"🎯 PERSONALIZED RESULT: Selected {len(section_questions)} questions using {template.difficulty_strategy} strategy")
+            else:
+                # Use random selection for non-Mock tests or if no difficulty strategy is set
+                logger.info(f"📚 STANDARD SELECTION: Using random selection for {template.test_type} test")
+                print(f"📚 STANDARD SELECTION: Using random selection for {template.test_type} test")
+                section_questions = query.order_by(func.random()).limit(section.question_count).all()
             
             # Log results for diagnostic purposes
             logger.info(f"Found {len(section_questions)} questions for paper_id={section.paper_id}, "
@@ -661,28 +852,40 @@ async def start_test(
         elif len(questions) < total_questions_required:
             logger.error(f"Not enough questions: found {len(questions)}, need {total_questions_required}")
             
-            # Create a more detailed error message
-            section_details = []
-            for section in template.sections:
-                # Log section details for debugging
-                logger.info(f"Checking questions for section_id_ref={section.section_id_ref}")
+            # For Mock tests, allow personalized selection to handle question repetition
+            if template.test_type == "Mock":
+                logger.info(f"🎯 MOCK TEST: Allowing personalized selection to handle insufficient questions "
+                           f"(found {len(questions)}, need {total_questions_required})")
+                print(f"🎯 MOCK TEST: Allowing personalized selection to handle insufficient questions "
+                      f"(found {len(questions)}, need {total_questions_required})")
                 
-                # Count questions for this section
-                section_count = sum(1 for q in questions if q.section_id == section.section_id_ref and 
-                                q.paper_id == section.paper_id)
+                # Log a warning but continue with the flow
+                logger.warning(f"Mock test proceeding with {len(questions)} available questions. "
+                              f"Personalized selection will repeat questions as needed.")
+            else:
+                # For non-Mock tests, maintain the original strict validation
+                # Create a more detailed error message
+                section_details = []
+                for section in template.sections:
+                    # Log section details for debugging
+                    logger.info(f"Checking questions for section_id_ref={section.section_id_ref}")
+                    
+                    # Count questions for this section
+                    section_count = sum(1 for q in questions if q.section_id == section.section_id_ref and 
+                                    q.paper_id == section.paper_id)
+                    
+                    # Log match results
+                    logger.info(f"Found {section_count} questions matching section_id_ref={section.section_id_ref}")
+                    print(f"Found {section_count} questions matching section_id={section.section_id_ref} (out of {len(questions)} total)")
+                    
+                    # Add to error details
+                    section_details.append(f"Section {section.section_id_ref}: Found {section_count}/{section.question_count}")
                 
-                # Log match results
-                logger.info(f"Found {section_count} questions matching section_id_ref={section.section_id_ref}")
-                print(f"Found {section_count} questions matching section_id={section.section_id_ref} (out of {len(questions)} total)")
-                
-                # Add to error details
-                section_details.append(f"Section {section.section_id_ref}: Found {section_count}/{section.question_count}")
-            
-            detail_message = "Not enough active questions available for the test. " + ", ".join(section_details)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=detail_message
-            )
+                detail_message = "Not enough active questions available for the test. " + ", ".join(section_details)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=detail_message
+                )
               # Create test attempt with transaction
         db_attempt = TestAttempt(
             test_template_id=template.template_id,

@@ -1,0 +1,91 @@
+{
+  "timestamp": "2025-07-03T20:02:01.921191",
+  "tests_passed": 10,
+  "tests_failed": 1,
+  "test_results": [
+    {
+      "test_name": "Backend Health Check",
+      "success": true,
+      "details": "Backend is healthy (Status: 200)",
+      "duration_ms": 52.57,
+      "timestamp": "2025-07-03T20:02:01.976771"
+    },
+    {
+      "test_name": "Frontend Accessibility",
+      "success": true,
+      "details": "Frontend is accessible (Status: 200)",
+      "duration_ms": 37.88,
+      "timestamp": "2025-07-03T20:02:02.015292"
+    },
+    {
+      "test_name": "Development Authentication",
+      "success": true,
+      "details": "Successfully authenticated as test@example.com",
+      "duration_ms": 182.93,
+      "timestamp": "2025-07-03T20:02:02.199918"
+    },
+    {
+      "test_name": "Papers API",
+      "success": true,
+      "details": "Retrieved 1 papers successfully",
+      "duration_ms": 86.36,
+      "timestamp": "2025-07-03T20:02:02.286959"
+    },
+    {
+      "test_name": "Mock Test Template Creation",
+      "success": true,
+      "details": "Template created with ID: 21",
+      "duration_ms": 136.59,
+      "timestamp": "2025-07-03T20:02:02.424361"
+    },
+    {
+      "test_name": "Mock Test Start",
+      "success": true,
+      "details": "Test started with attempt ID: 16",
+      "duration_ms": 110.48,
+      "timestamp": "2025-07-03T20:02:02.535496"
+    },
+    {
+      "test_name": "Question Retrieval",
+      "success": true,
+      "details": "Retrieved 40 questions with randomization evidence",
+      "duration_ms": 77.12,
+      "timestamp": "2025-07-03T20:02:02.613215"
+    },
+    {
+      "test_name": "Answer Submission Test",
+      "success": true,
+      "details": "Successfully submitted 3/3 answers (100.0% success rate)",
+      "duration_ms": 0,
+      "timestamp": "2025-07-03T20:02:02.795955"
+    },
+    {
+      "test_name": "End-to-End Flow",
+      "success": true,
+      "details": "Test completed successfully. Results: {}...",
+      "duration_ms": 184.18,
+      "timestamp": "2025-07-03T20:02:02.980391"
+    },
+    {
+      "test_name": "Frontend Integration",
+      "success": false,
+      "details": "Mock Test page loaded with 0/4 UI elements detected",
+      "duration_ms": 50.6,
+      "timestamp": "2025-07-03T20:02:03.031963"
+    },
+    {
+      "test_name": "Performance Test",
+      "success": true,
+      "details": "Question retrieval: Avg 85.17ms, Max 135.10ms, Min 59.55ms",
+      "duration_ms": 0,
+      "timestamp": "2025-07-03T20:02:03.458413"
+    }
+  ],
+  "performance_metrics": {
+    "question_retrieval_avg_ms": 85.17,
+    "question_retrieval_max_ms": 135.1,
+    "question_retrieval_min_ms": 59.55,
+    "performance_acceptable": true
+  },
+  "errors": []
+}

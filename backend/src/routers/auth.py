@@ -296,3 +296,51 @@ async def update_user_role(
     user.role = data["role"]
     db.commit()
     return {"status": "success"}
+
+@router.post("/refresh")
+async def refresh_token(
+    current_user: User = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh the JWT token for an authenticated user
+    """
+    try:
+        # User is already verified by the verify_token dependency
+        # Create a new token with extended expiry
+        access_token = create_access_token(data={"sub": current_user.email})
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        print(f"Token refresh error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to refresh token"
+        )
+
+@router.get("/me")
+async def get_current_user_info(
+    current_user: User = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current authenticated user information
+    """
+    try:
+        return {
+            "user_id": current_user.user_id,
+            "email": current_user.email,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "role": current_user.role,
+            "is_active": current_user.is_active
+        }
+    except Exception as e:
+        print(f"Get user info error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get user information"
+        )

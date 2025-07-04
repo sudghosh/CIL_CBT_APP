@@ -23,6 +23,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { testsAPI } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
 import { shuffleArray, shuffleOptionsInQuestions } from '../utils/shuffleUtils';
+import { useSession } from '../contexts/SessionContext';
 
 interface QuestionOption {
   option_id: number;
@@ -132,9 +133,14 @@ const normalizeQuestionFormat = (question: Question): Question => {
 }
 
 export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onComplete, testDuration = 60 }): ReactElement => {
+  // Session management for activity tracking
+  const { markActivity } = useSession();
+  
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
-  // Store answers as strings to match RadioGroup value expectations
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  // Store answers using unique keys that handle repeated questions
+  // Format: "questionId-index-uniqueId" to ensure each question instance is completely independent
+  // This prevents any cross-contamination between repeated questions
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   // Get duration from props instead of hardcoding
   const [timeLeft, setTimeLeft] = useState<number>(0); // Initialize to 0, will be set based on props
@@ -302,6 +308,9 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
   }, [handleSubmitTest]);  const handleAnswerChange = async (questionId: number, optionIndex: number) => {
     if (isSubmitting || isSavingAnswer) return;
     
+    // Mark activity when user selects an answer
+    markActivity();
+    
     try {
       setIsSavingAnswer(true);
       setError(null);
@@ -339,8 +348,14 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
         }
       }
       
+      // Create unique answer key for this question instance (handles repeated questions)
+      // Using questionId, currentQuestionIndex, and a hash of question content for complete uniqueness
+      const questionContentHash = currentShuffledQuestion ? 
+        btoa(String(currentShuffledQuestion.question_text)).slice(0, 8) : 'default';
+      const uniqueAnswerKey = `${questionId}-${currentQuestionIndex}-${questionContentHash}`;
+      
       // Optimistically update UI - store as string to match RadioGroup expectations
-      setAnswers((prev) => ({ ...prev, [questionId]: String(optionIndex) }));
+      setAnswers((prev) => ({ ...prev, [uniqueAnswerKey]: String(optionIndex) }));
       
       const submission: AnswerSubmission = {
         question_id: questionId,
@@ -357,7 +372,10 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
       // Revert the answer in UI if save failed
       setAnswers((prev) => {
         const newAnswers = { ...prev };
-        delete newAnswers[questionId];
+        const questionContentHash = currentShuffledQuestion ? 
+          btoa(String(currentShuffledQuestion.question_text)).slice(0, 8) : 'default';
+        const uniqueAnswerKey = `${questionId}-${currentQuestionIndex}-${questionContentHash}`;
+        delete newAnswers[uniqueAnswerKey];
         return newAnswers;
       });
     } finally {
@@ -400,6 +418,10 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
   
   const handleNavigateQuestion = (index: number) => {
     if (index < 0 || index >= displayedQuestions.length || isSubmitting) return;
+    
+    // Mark activity when user navigates between questions
+    markActivity();
+    
     setCurrentQuestionIndex(index);
   };  // Get the current question - prioritize the shuffled version if available
   const currentQuestionRaw = displayedQuestions[currentQuestionIndex];
@@ -554,7 +576,13 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
           </Typography>
         </Box>
           <RadioGroup
-          value={answers[currentQuestion.question_id] ?? ''}
+          value={(() => {
+            // Generate the same unique key for answer retrieval
+            const questionContentHash = currentShuffledQuestion ? 
+              btoa(String(currentShuffledQuestion.question_text)).slice(0, 8) : 'default';
+            const uniqueAnswerKey = `${currentQuestion.question_id}-${currentQuestionIndex}-${questionContentHash}`;
+            return answers[uniqueAnswerKey] ?? '';
+          })()}
           onChange={(e) => {
             // Parse the option index back to a number for internal processing
             const optionIndex = parseInt(e.target.value, 10);
@@ -692,13 +720,13 @@ export const TestInterface: React.FC<TestProps> = ({ attemptId, questions, onCom
         <Box sx={{ mt: 2 }}>
           <Grid container spacing={1}>
             {displayedQuestions.map((q: Question, index: number) => (
-              <Grid item key={q.question_id}>
+              <Grid item key={`question-${q.question_id}-${index}`}>
                 <Chip
                   label={index + 1}
                   color={
                     markedForReview.has(q.question_id)
                       ? 'secondary'
-                      : answers[q.question_id] !== undefined
+                      : answers[`${q.question_id}-${index}`] !== undefined
                       ? 'success'
                       : 'default'
                   }
