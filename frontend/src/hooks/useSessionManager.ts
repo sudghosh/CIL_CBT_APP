@@ -285,6 +285,24 @@ export const useSessionManager = (
     isActive,
   ]);
 
+  // Cleanup function to reset session state and clear all timers
+  const cleanupSession = useCallback(() => {
+    // Clear all timers
+    clearTimers();
+    
+    // Reset session state to initial values
+    setSessionState(prev => ({
+      ...prev,
+      showIdleWarning: false,
+      timeUntilWarning: mergedConfig.idleWarningTimeoutMs,
+      timeUntilLogout: mergedConfig.logoutTimeoutMs,
+      isCloseToExpiry: false,
+      tokenRefreshStatus: 'idle',
+    }));
+    
+    console.log('[SessionManager] Session cleaned up - all timers cleared and state reset');
+  }, [clearTimers, mergedConfig.idleWarningTimeoutMs, mergedConfig.logoutTimeoutMs]);
+
   return {
     // State
     sessionState,
@@ -298,6 +316,7 @@ export const useSessionManager = (
     dismissIdleWarning,
     refreshToken,
     markActivity,
+    cleanupSession,
     
     // Utils
     getTimeSinceLastActivity,

@@ -11,6 +11,7 @@ import {
   Brightness7,
   Assessment,
   VpnKey,
+  Quiz,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +34,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   };  const menuItems = [
     { text: 'Home', icon: <Home />, path: '/' },
     { text: 'Tests', icon: <Assignment />, path: '/practice-test' },
+    { text: 'Full Mock Test', icon: <Quiz />, path: '/mock-test' },
     { text: 'Results', icon: <Description />, path: '/results' },
     { text: 'Performance Dashboard', icon: <Assessment />, path: '/performance-dashboard' },
     ...(isAdmin ? [

@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useSessionManager, SessionConfig, SessionState } from '../hooks/useSessionManager';
-import { IdleWarningDialog } from '../components/IdleWarningDialog';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Snackbar } from '@mui/material';
+import { Snackbar, Alert } from '@mui/material';
+import { useSessionManager, SessionState } from '../hooks/useSessionManager';
+import { IdleWarningDialog } from '../components/IdleWarningDialog';
 
 interface SessionContextType {
   sessionState: SessionState;
@@ -15,25 +15,60 @@ interface SessionContextType {
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
 interface SessionProviderProps {
-  children: React.ReactNode;
-  config?: SessionConfig;
+  children: ReactNode;
+  config?: {
+    activityDebounceMs?: number;
+    refreshIntervalMs?: number;
+    idleWarningTimeoutMs?: number;
+    logoutTimeoutMs?: number;
+    enableActivityTracking?: boolean;
+    enableTokenRefresh?: boolean;
+    enableIdleWarning?: boolean;
+    enableAutoLogout?: boolean;
+  };
   onSessionTimeout?: () => void;
   enableSessionManagement?: boolean;
 }
 
 export const SessionProvider: React.FC<SessionProviderProps> = ({
   children,
-  config,
+  config = {},
   onSessionTimeout,
   enableSessionManagement = true,
 }) => {
   const navigate = useNavigate();
   const [showTokenRefreshSuccess, setShowTokenRefreshSuccess] = useState(false);
   const [showTokenRefreshError, setShowTokenRefreshError] = useState(false);
+  
+  // Refs to track timeout callbacks for cleanup
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clear notification timeouts
+  const clearNotificationTimeouts = () => {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
+  };
 
   // Handle session timeout
   const handleSessionTimeout = () => {
-    console.log('[SessionProvider] Session timeout - redirecting to login');
+    console.log('[SessionProvider] Session timeout - cleaning up and redirecting to login');
+    
+    // Clear all session-related timers and state
+    cleanupSession();
+    
+    // Clear notification timeouts
+    clearNotificationTimeouts();
+    
+    // Reset notification states
+    setShowTokenRefreshSuccess(false);
+    setShowTokenRefreshError(false);
     
     // Clear tokens
     localStorage.removeItem('token');
@@ -63,6 +98,7 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
     refreshToken,
     getSessionStatus,
     markActivity,
+    cleanupSession,
   } = useSessionManager(
     {
       // Default configuration optimized for testing scenarios
@@ -82,24 +118,32 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({
 
   // Handle token refresh success/failure notifications
   useEffect(() => {
+    clearNotificationTimeouts(); // Clear timeouts on every render
     if (sessionState.tokenRefreshStatus === 'success') {
       setShowTokenRefreshSuccess(true);
-      setTimeout(() => setShowTokenRefreshSuccess(false), 3000);
+      successTimeoutRef.current = setTimeout(() => setShowTokenRefreshSuccess(false), 3000);
     } else if (sessionState.tokenRefreshStatus === 'failed') {
       setShowTokenRefreshError(true);
-      setTimeout(() => setShowTokenRefreshError(false), 5000);
+      errorTimeoutRef.current = setTimeout(() => setShowTokenRefreshError(false), 5000);
     }
   }, [sessionState.tokenRefreshStatus]);
+
+  // Cleanup effect to clear timeouts on unmount
+  useEffect(() => {
+    return () => {
+      clearNotificationTimeouts();
+    };
+  }, []);
 
   // Enhanced refresh token function with user feedback
   const handleRefreshToken = async (): Promise<boolean> => {
     const success = await refreshToken();
     if (success) {
       setShowTokenRefreshSuccess(true);
-      setTimeout(() => setShowTokenRefreshSuccess(false), 3000);
+      successTimeoutRef.current = setTimeout(() => setShowTokenRefreshSuccess(false), 3000);
     } else {
       setShowTokenRefreshError(true);
-      setTimeout(() => setShowTokenRefreshError(false), 5000);
+      errorTimeoutRef.current = setTimeout(() => setShowTokenRefreshError(false), 5000);
     }
     return success;
   };
