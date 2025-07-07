@@ -1772,3 +1772,195 @@ async def get_next_adaptive_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=detail
         )
+
+@router.get("/attempts/{attempt_id}/next-question")
+async def get_next_question_for_adaptive_test(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)
+):
+    """
+    GET endpoint to fetch the next question for an adaptive test.
+    This matches the frontend's expectation: GET /tests/attempts/{attempt_id}/next-question
+    """
+    try:
+        logger.info(f"GET next-question request for attempt_id={attempt_id}")
+        
+        # Get the attempt
+        attempt = db.query(TestAttempt).filter(
+            TestAttempt.attempt_id == attempt_id,
+            TestAttempt.user_id == current_user.user_id
+        ).first()
+        
+        if not attempt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Test attempt not found"
+            )
+        
+        if attempt.status != "InProgress":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Test is not in progress"
+            )
+        
+        # Get total questions answered so far
+        questions_answered = db.query(TestAnswer).filter(
+            TestAnswer.attempt_id == attempt_id,
+            TestAnswer.selected_option_index.isnot(None)
+        ).count()
+        
+        logger.info(f"Questions answered so far: {questions_answered}")
+        
+        # Check max questions limit
+        template = db.query(TestTemplate).filter(TestTemplate.template_id == attempt.test_template_id).first()
+        sections = db.query(TestTemplateSection).filter(TestTemplateSection.template_id == template.template_id).all()
+        
+        # Get max_questions from attempt or template
+        max_questions = None
+        if hasattr(attempt, "max_questions") and attempt.max_questions is not None:
+            max_questions = attempt.max_questions
+        else:
+            max_questions = sum(section.question_count for section in sections)
+        
+        if not max_questions or max_questions < 1:
+            max_questions = 1
+        
+        logger.info(f"Max questions: {max_questions}, Answered: {questions_answered}")
+        
+        # If we've reached the limit, return completion status
+        if questions_answered >= max_questions:
+            logger.info(f"Test complete: reached max questions limit ({questions_answered}/{max_questions})")
+            return {
+                "status": "complete",
+                "message": "Maximum number of questions reached. Test completed.",
+                "question": None,
+                "questions_answered": questions_answered,
+                "max_questions": max_questions,
+                "progress_percentage": 100
+            }
+        
+        # Get answers already given to avoid repeating questions
+        answered_question_ids = [
+            a.question_id for a in db.query(TestAnswer).filter(
+                TestAnswer.attempt_id == attempt_id,
+                TestAnswer.selected_option_index.isnot(None)
+            ).all()
+        ]
+        
+        # Build query for potential next questions (excluding already answered)
+        potential_questions = db.query(Question).filter(
+            Question.question_id.notin_(answered_question_ids)
+        )
+        
+        # Apply adaptive strategy if defined (simplified version)
+        adaptive_strategy = attempt.adaptive_strategy_chosen
+        difficulty_level = None
+        
+        if adaptive_strategy:
+            # For the first question or when we don't have previous answer data,
+            # use progressive strategy based on question number
+            if adaptive_strategy == "easy_to_hard":
+                if questions_answered < max_questions * 0.33:
+                    difficulty_level = "Easy"
+                elif questions_answered < max_questions * 0.66:
+                    difficulty_level = "Medium"
+                else:
+                    difficulty_level = "Hard"
+            elif adaptive_strategy == "hard_to_easy":
+                if questions_answered < max_questions * 0.33:
+                    difficulty_level = "Hard"
+                elif questions_answered < max_questions * 0.66:
+                    difficulty_level = "Medium"
+                else:
+                    difficulty_level = "Easy"
+            # For "adaptive" strategy without previous answer, use balanced approach
+            else:
+                difficulty_levels = ["Easy", "Medium", "Hard"]
+                difficulty_level = difficulty_levels[questions_answered % 3]
+        
+        # Apply difficulty filter if determined
+        if difficulty_level:
+            logger.info(f"Applying difficulty filter: {difficulty_level}")
+            potential_questions = potential_questions.filter(Question.difficulty_level == difficulty_level)
+        
+        matching_questions = potential_questions.all()
+        
+        # If no questions with the ideal difficulty, fall back to any unanswered question
+        if not matching_questions:
+            logger.info("No questions match the ideal difficulty, falling back to any unanswered question")
+            matching_questions = db.query(Question).filter(
+                Question.question_id.notin_(answered_question_ids)
+            ).all()
+        
+        if not matching_questions:
+            # No more questions available
+            logger.info("No more questions available, test is complete")
+            return {
+                "status": "complete",
+                "message": "No more questions available",
+                "question": None,
+                "questions_answered": questions_answered,
+                "max_questions": max_questions,
+                "progress_percentage": 100
+            }
+        
+        # Select a random question from the matching ones
+        next_question_obj = random.choice(matching_questions)
+        
+        # Get the question with options eagerly loaded
+        next_question = db.query(Question).options(
+            joinedload(Question.options)
+        ).filter(
+            Question.question_id == next_question_obj.question_id
+        ).first()
+        
+        logger.info(f"Selected next question: id={next_question.question_id}, difficulty={next_question.difficulty_level}")
+        
+        # Extract options from the question
+        options = []
+        
+        # Check if the question has related options through the relationship
+        if hasattr(next_question, "options") and next_question.options:
+            # Sort options by option_order to ensure they're in the correct order
+            sorted_options = sorted(next_question.options, key=lambda opt: opt.option_order)
+            for option in sorted_options:
+                options.append(option.option_text)
+        
+        # If no options found or not enough options, ensure we have exactly 4 options
+        while len(options) < 4:
+            options.append(f"Option {len(options)+1}")
+        
+        # Format question response to match frontend expectations
+        question_response = {
+            "question_id": next_question.question_id,
+            "question_text": next_question.question_text,
+            "difficulty_level": next_question.difficulty_level,
+            "topic": next_question.topic if hasattr(next_question, 'topic') else None,
+            "options": options
+        }
+        
+        # Return response in the format expected by frontend
+        response_data = {
+            "status": "success",
+            "question": question_response,  # Frontend expects 'question' key, not 'next_question'
+            "questions_answered": questions_answered,
+            "max_questions": max_questions,
+            "progress_percentage": min(100, int((questions_answered / max_questions) * 100)) if max_questions > 0 else 0
+        }
+        
+        logger.info(f"Returning next question response with progress: {response_data['progress_percentage']}% " +
+                   f"({questions_answered}/{max_questions} questions)")
+        
+        return response_data
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error getting next question (GET endpoint): {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get next question: {str(e)}"
+        )
