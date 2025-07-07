@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { testsAPI } from '../services/api';
 import { TestInterface } from '../components/TestInterface';
+import { ThemedTestInterface } from '../components/ThemedTestInterface';
 import { TestCustomizationComponent } from '../components/TestCustomizationComponent';
 import { TestInstructionsComponent } from '../components/TestInstructionsComponent';
 import { CreateTestTemplateRequest, DifficultyStrategy } from '../types';
@@ -155,10 +156,16 @@ export const MockTestPage: React.FC = () => {
       
       case 'test':
         return attemptId ? (
-          <TestInterface
+          <ThemedTestInterface
             attemptId={attemptId}
             questions={questions}
             onComplete={handleTestComplete}
+            testDuration={timeLimit}
+            userInfo={{
+              candidateName: 'Test User',
+              examName: 'Mock Test',
+              subject: selectedPapers.map(p => p.paper_name).join(', ')
+            }}
           />
         ) : (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>

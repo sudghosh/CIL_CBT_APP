@@ -1,0 +1,775 @@
+import React from 'react';
+import { ThemedAdaptiveTestInterface } from './ThemedAdaptiveTestInterface';
+
+/**
+ * AdaptiveTestInterface component - now uses the themed version
+ * This serves as a compatibility layer for existing code
+ */
+export const AdaptiveTestInterface = ThemedAdaptiveTestInterface;
+
+/**
+ * Interface for question option data
+ */
+interface QuestionOption {
+  id?: number;
+  option_id?: number;
+  option_text: string;
+  option_order: number;
+  // Added by shuffleArray function:
+  originalIndex?: number;
+  originalPreservedValue?: number;
+}
+
+/**
+ * Interface for question data
+ */
+interface Question {
+  id?: number;
+  question_id?: number;
+  question_text: string;
+  difficulty_level?: string;
+  topic?: string;
+  options: QuestionOption[] | string[];
+}
+
+/**
+ * Props for AdaptiveTestInterface component
+ */
+interface AdaptiveTestProps {
+  attemptId: number;
+  onComplete: () => void;
+  adaptiveStrategy: string;
+  testDuration?: number; // Duration in minutes
+}
+
+/**
+ * Adaptive Test Interface Component
+ * 
+ * Handles rendering and interaction for adaptive tests where questions
+ * are fetched dynamically one at a time based on performance
+ * 
+ * @param props - Component props
+ * @returns React component
+ */
+export const AdaptiveTestInterface = ({ 
+  attemptId, 
+  onComplete,
+  adaptiveStrategy,
+  testDuration = 60 // Default to 60 minutes if not specified
+}: AdaptiveTestProps): JSX.Element => {
+  // Current question state
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
+  const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
+  const [testProgress, setTestProgress] = useState<number>(0);
+  const [questionsAnswered, setQuestionsAnswered] = useState<number>(0);
+  const [maxQuestions, setMaxQuestions] = useState<number | null>(null);
+  const [showDifficultyIndicator, setShowDifficultyIndicator] = useState<boolean>(true);
+  // Test timer state - initialized to 0, will be set based on props
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  
+  /**
+   * Handle the final test submission
+   */  
+  const handleSubmitTest = useCallback(async () => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      
+      // If there's a current question with a selected option, submit it first
+      if (currentQuestion && selectedOption !== null) {
+        const timeTakenSeconds = Math.floor((Date.now() - questionStartTime) / 1000);
+        const questionId = currentQuestion.id || currentQuestion.question_id;
+        
+        if (!questionId) {
+          console.error('Question ID missing when submitting test:', currentQuestion);
+        } else {
+          try {
+            console.log(`Submitting final answer before ending test for question ${questionId}`);
+            
+            // Convert string selectedOption to number
+            const selectedOptionIndex = parseInt(selectedOption, 10);
+            
+            if (!isNaN(selectedOptionIndex)) {
+              // Get the original option index if available
+              let originalOptionIndex = selectedOptionIndex;
+              
+              const selectedOptionObject = currentQuestion.options[selectedOptionIndex];
+              if (selectedOptionObject && typeof selectedOptionObject === 'object') {
+                if ('originalPreservedValue' in selectedOptionObject) {
+                  originalOptionIndex = (selectedOptionObject as any).originalPreservedValue;
+                } else if ('option_order' in selectedOptionObject) {
+                  originalOptionIndex = (selectedOptionObject as any).option_order;
+                }
+              }
+              
+              // Submit answer but ignore any errors (test might already be complete)
+              await testsAPI.submitAnswerAndGetNextQuestion(
+                attemptId,
+                questionId,
+                originalOptionIndex,
+                timeTakenSeconds
+              ).catch((err: any) => console.warn('Error submitting final answer, continuing anyway:', err));
+            }
+          } catch (submitErr) {
+            console.warn('Error in final answer submission, proceeding to finish test anyway:', submitErr);
+          }
+        }
+      }
+      
+      // Then finish the test
+      console.log(`Finishing test with attempt ID ${attemptId}`);
+      await testsAPI.finishTest(attemptId);
+      onComplete();
+    } catch (err: any) {
+      console.error('Test submission error:', err);
+      setError(`Failed to submit test: ${err.message || 'Unknown error'}`);
+      
+      // Still try to complete the test on frontend even if API fails
+      if (err.message?.includes('404') || err.response?.status === 404) {
+        console.warn('Received 404 when finishing test, test might already be complete');
+        onComplete();
+      }
+    } finally {
+      setIsSubmitting(false);
+      setShowConfirmSubmit(false);
+    }
+  }, [attemptId, currentQuestion, selectedOption, questionStartTime, onComplete]);      /**
+   * Initialize the test duration when component mounts
+   */
+  useEffect(() => {
+    // Convert minutes to seconds
+    const durationInSeconds = testDuration * 60;
+    setTimeLeft(durationInSeconds);
+    
+    console.log(`Setting adaptive test duration to ${testDuration} minutes (${durationInSeconds} seconds)`);
+  }, [testDuration]);
+    /**
+   * Initialize the timer for the test
+   * Separated from question fetching to prevent infinite loops
+   */
+  useEffect(() => {
+    // Start the timer for the first question
+    console.log("Initializing adaptive test timer with attempt ID:", attemptId);
+    
+    // Initialize the test timer
+    const timerInterval = setInterval(() => {
+      setTimeLeft((prevTime: number) => {
+        if (prevTime <= 1) {
+          clearInterval(timerInterval);
+          // Use a stable reference to handle test submission
+          testsAPI.finishTest(attemptId)
+            .then(() => onComplete())
+            .catch((err: any) => {
+              console.error('Error finishing test due to timeout:', err);
+              onComplete(); // Still complete the test on the frontend
+            });
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+
+    // Clean up timer on unmount
+    return () => clearInterval(timerInterval);
+  }, [attemptId, onComplete, testsAPI]); // Added testsAPI to dependencies
+    /**
+   * Separate effect for fetching the first question
+   * Runs only once on component mount
+   */
+  useEffect(() => {
+    // Set question start time for the initial question
+    setQuestionStartTime(Date.now());
+    
+    // Only fetch the question once on component mount
+    fetchNextQuestion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);    /**
+   * Fetch the next question from the API
+   */
+  const fetchNextQuestion = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log(`Fetching question for attempt ID ${attemptId}, questions answered: ${questionsAnswered}`);
+      
+      if (questionsAnswered === 0) {
+        // For the first question in an adaptive test, try multiple approaches
+        console.log(`Getting first question for adaptive test attempt ${attemptId}`);
+        
+        let questionData = null;
+        let source = "";
+        
+        // Approach 1: First try the regular questions endpoint
+        try {
+          const response = await testsAPI.getQuestions(attemptId);
+          
+          if (response && response.data && response.data.length > 0) {
+            questionData = response.data[0];
+            source = "regular endpoint";
+            console.log("First question data received from regular endpoint:", questionData);
+          } else {
+            console.warn("No questions returned from regular endpoint");
+          }
+        } catch (getQuestionsErr) {
+          console.error("Error getting first question from regular endpoint:", getQuestionsErr);
+        }
+        
+        // Approach 2: If approach 1 failed, try the adaptive next_question endpoint
+        if (!questionData) {
+          try {
+            console.log("Attempting to fetch first adaptive question via POST to /tests/{attemptId}/next_question");
+            const fallbackResponse = await api.post(`/tests/${attemptId}/next_question`, {
+              question_id: null,
+              selected_option_id: null,
+              time_taken_seconds: 0
+            });
+            
+            if (fallbackResponse.data && fallbackResponse.data.next_question) {
+              questionData = fallbackResponse.data.next_question;
+              source = "adaptive endpoint";
+              console.log("First adaptive question received from fallback endpoint:", questionData);
+            }
+          } catch (fallbackErr) {
+            console.warn("Failed to fetch from adaptive fallback endpoint:", fallbackErr);
+          }
+        }
+        
+        // Approach 3: Try the test questions endpoint directly with specific headers
+        if (!questionData) {
+          try {
+            console.log("Attempting direct API call to fetch first question");
+            const directResponse = await api.get(`/tests/${attemptId}/questions`, {
+              headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+              }
+            });
+            
+            if (directResponse.data && Array.isArray(directResponse.data) && directResponse.data.length > 0) {
+              questionData = directResponse.data[0];
+              source = "direct API call";
+              console.log("First question obtained via direct API call:", questionData);
+            }
+          } catch (directErr) {
+            console.warn("Failed to fetch via direct API call:", directErr);
+          }
+        }
+        
+        // If we have question data from any approach, process it
+        if (questionData) {
+          console.log(`Processing first question data from ${source}`);
+          
+          // Debug options before processing
+          if (questionData.options) {
+            console.log("Options format (raw):", 
+              Array.isArray(questionData.options) 
+                ? `Array of ${typeof questionData.options[0]} with length ${questionData.options.length}`
+                : `Type: ${typeof questionData.options}`
+            );
+            
+            // Print actual options for debugging
+            console.log("Raw options data:", JSON.stringify(questionData.options).substring(0, 500));
+          } else {
+            console.warn("First question has no options, checking for option_X fields");
+            
+            // Some backends might not package options in an array
+            const extractedOptions = [];
+            for (let i = 1; i <= 4; i++) {
+              const optionField = `option_${i}`;
+              const optionTextField = `option_${i}_text`;
+              
+              if (questionData[optionTextField]) {
+                extractedOptions.push(questionData[optionTextField]);
+              } else if (questionData[optionField]) {
+                extractedOptions.push(questionData[optionField]);
+              }
+            }
+            
+            if (extractedOptions.length > 0) {
+              console.log("Extracted options from individual fields:", extractedOptions);
+              questionData.options = extractedOptions;
+            }
+          }
+              // Normalize question format
+        const normalizedQuestion = normalizeQuestionFormat(questionData);
+          // Shuffle the options
+        if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options) && normalizedQuestion.options.length > 1) {
+          // Check if options are in object format (not string[])
+          if (typeof normalizedQuestion.options[0] === 'object') {
+            normalizedQuestion.options = shuffleArray(normalizedQuestion.options as QuestionOption[], 'option_order');
+            console.log("Options have been randomized");
+          } else {
+            console.log("Options are in string format, converting to objects before shuffling");
+            // Convert string options to objects, then shuffle
+            const objectOptions = (normalizedQuestion.options as string[]).map((text, idx) => ({
+              option_text: text,
+              option_order: idx,
+              option_id: idx
+            }));
+            normalizedQuestion.options = shuffleArray(objectOptions, 'option_order');
+          }
+        }
+        
+        console.log("Normalized question with randomized options:", {
+          id: normalizedQuestion.id,
+          text: normalizedQuestion.question_text,
+          options: normalizedQuestion.options
+        });
+        
+        setCurrentQuestion(normalizedQuestion);
+        setTestProgress(5); // Start progress at 5%
+        } else {
+          throw new Error('Could not retrieve question from any endpoint');
+        }
+      } else {
+        // Otherwise wait for a question to be fetched after submitting an answer
+        // This is handled in submitAnswer
+        console.log("Not fetching next question here, will be handled in submitAnswer");
+      }
+    } catch (err: any) {
+      setError(`Failed to fetch question: ${err.message || 'Unknown error'}`);
+      console.error('Error fetching question:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+    /**
+   * Normalize question format to handle different API responses
+   */
+  const normalizeQuestionFormat = (question: any): Question => {
+    // Ensure question has both id and question_id properties
+    const normalizedQuestion = {
+      ...question,
+      id: question.id || question.question_id,
+      question_id: question.id || question.question_id
+    };
+    
+    // Ensure options exists
+    if (!normalizedQuestion.options) {
+      console.warn("Question has no options, creating empty array", question);
+      normalizedQuestion.options = [];
+    } 
+    // Convert options from string[] to QuestionOption[] if needed
+    else if (Array.isArray(normalizedQuestion.options)) {
+      if (normalizedQuestion.options.length > 0) {
+        if (typeof normalizedQuestion.options[0] === 'string') {
+          console.log("Converting options from string[] to QuestionOption[]");
+          normalizedQuestion.options = (normalizedQuestion.options as string[]).map((optionText, index) => ({
+            option_text: optionText,
+            option_order: index,
+            id: index, // Use index as id for string options
+            option_id: index // Use index as option_id for string options
+          }));
+        } else if (typeof normalizedQuestion.options[0] === 'object') {
+          // Already in object format, ensure all required properties
+          normalizedQuestion.options = (normalizedQuestion.options as any[]).map((option, index) => ({
+            ...option,
+            option_text: option.option_text || `Option ${index + 1}`,
+            option_order: option.option_order ?? index,
+            id: option.id ?? option.option_id ?? index,
+            option_id: option.option_id ?? option.id ?? index
+          }));
+        }
+      }
+    } else if (typeof normalizedQuestion.options === 'string') {
+      // Handle edge case where options might be a JSON string
+      try {
+        console.warn("Options is a string, attempting to parse:", normalizedQuestion.options);
+        const parsedOptions = JSON.parse(normalizedQuestion.options as unknown as string);
+        if (Array.isArray(parsedOptions)) {
+          // Recursively call normalizeQuestionFormat with parsed options
+          const tempQuestion = {...normalizedQuestion, options: parsedOptions};
+          return normalizeQuestionFormat(tempQuestion);
+        }
+      } catch (e) {
+        console.error("Failed to parse options string:", e);
+        normalizedQuestion.options = [];
+      }
+    }
+    
+    console.log("Normalized question options:", normalizedQuestion.options);
+    return normalizedQuestion as Question;
+  };
+    /**
+   * Submit the answer to the current question and get the next question
+   */  const submitAnswer = async () => {
+    if (!currentQuestion || selectedOption === null) {
+      setError('Please select an answer before proceeding');
+      return;
+    }
+    
+    // Get question_id (could be in id or question_id property)
+    const questionId = currentQuestion.id || currentQuestion.question_id;
+    
+    if (!questionId) {
+      setError('Invalid question data. Please refresh the page and try again.');
+      console.error('Question ID missing:', currentQuestion);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError(null);
+        
+      // Convert string selectedOption to number for array indexing
+      const selectedOptionIndex = parseInt(selectedOption, 10);
+      if (isNaN(selectedOptionIndex)) {
+        throw new Error('Invalid option selection');
+      }
+      
+      // Get the selected option object, handling both string[] and object[] formats
+      const selectedOptionObject = currentQuestion.options[selectedOptionIndex];
+      if (!selectedOptionObject) {
+        throw new Error(`Selected option at index ${selectedOptionIndex} not found in question ${questionId}`);
+      }
+      
+      // Get the original option_order or index value that should be sent to the backend
+      let originalOptionIndex = selectedOptionIndex; // Default fallback
+      
+      if (typeof selectedOptionObject === 'object') {
+        if ('originalPreservedValue' in selectedOptionObject) {
+          // Get original value that was stored during shuffling
+          originalOptionIndex = (selectedOptionObject as any).originalPreservedValue;
+          console.log(`Using preserved original option index ${originalOptionIndex} for display index ${selectedOptionIndex}`);
+        } else if ('option_order' in selectedOptionObject) {
+          // Use option_order as fallback 
+          originalOptionIndex = (selectedOptionObject as any).option_order;
+          console.log(`Using option_order ${originalOptionIndex} as original index for display index ${selectedOptionIndex}`);
+        }
+      } else {
+        // If it's a string option, just use the selectedOption index directly
+        console.log(`Selected option is a string, using index ${selectedOptionIndex} as-is`);
+      }
+      
+      // Calculate time taken to answer
+      const timeTakenSeconds = Math.floor((Date.now() - questionStartTime) / 1000);
+      
+      // Submit answer and get next question
+      console.log(`Submitting answer for question ${questionId}: displayed option ${selectedOptionIndex}, original index ${originalOptionIndex}, time ${timeTakenSeconds}s`);
+      console.log(`POST /tests/${attemptId}/next_question with payload:`, {
+        question_id: questionId,
+        selected_option_id: originalOptionIndex, // Use the original index, not the displayed one
+        time_taken_seconds: timeTakenSeconds
+      });
+      
+      const response = await testsAPI.submitAnswerAndGetNextQuestion(
+        attemptId,
+        questionId,
+        originalOptionIndex, // Use the original index, not the displayed one
+        timeTakenSeconds
+      );// Get questions_answered and max_questions from the response if available
+      const newQuestionsAnswered = response.questions_answered || (questionsAnswered + 1);
+      const newMaxQuestions = response.max_questions || maxQuestions;
+      
+      setQuestionsAnswered(newQuestionsAnswered);
+      
+      // Update max questions if it was returned from the server
+      if (newMaxQuestions && newMaxQuestions !== maxQuestions) {
+        setMaxQuestions(newMaxQuestions);
+        console.log(`Updated max questions to ${newMaxQuestions}`);
+      }
+      
+      // Check for "complete" status - this means we've reached max questions limit
+      if (response.status === "complete") {
+        console.log("Test marked as complete by the server, finishing test.");
+        setTestProgress(100);
+        onComplete();
+        return;
+      }
+      
+      // Update progress based on questions answered and max questions
+      if (newMaxQuestions) {
+        const progressPercent = Math.min(95, (newQuestionsAnswered / newMaxQuestions) * 100);
+        setTestProgress(progressPercent);
+        console.log(`Updated progress: ${progressPercent.toFixed(1)}% (${newQuestionsAnswered}/${newMaxQuestions})`);
+      } else {
+        // Fallback to previous logic if max questions is unknown
+        setTestProgress((prev: number) => Math.min(95, prev + 4.5));
+      }
+      
+      // Check if we've reached the max questions limit - handle both client and server side validation
+      if (newMaxQuestions && newQuestionsAnswered >= newMaxQuestions) {
+        console.log(`Reached max questions limit (${newQuestionsAnswered}/${newMaxQuestions}). Finishing test.`);
+        setTestProgress(100);
+        await testsAPI.finishTest(attemptId);
+        onComplete();
+        return;
+      }
+      
+      // Check if we have a next question or if the test is complete
+      if (response && response.next_question) {
+        console.log("Next question data received:", response.next_question);
+        
+        // Log options format for debugging
+        if (response.next_question.options) {
+          console.log("Next question options format:", 
+            Array.isArray(response.next_question.options) 
+              ? `Array of ${typeof response.next_question.options[0]} (length: ${response.next_question.options.length})`
+              : typeof response.next_question.options
+          );
+        } else {
+          console.warn("Next question has no options:", response.next_question);
+        }
+          // Normalize question format
+        const normalizedQuestion = normalizeQuestionFormat(response.next_question);
+          // Shuffle the options for the next question
+        if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options) && normalizedQuestion.options.length > 1) {
+          // Check if options are in object format (not string[])
+          if (typeof normalizedQuestion.options[0] === 'object') {
+            normalizedQuestion.options = shuffleArray(normalizedQuestion.options as QuestionOption[], 'option_order');
+            console.log("Options have been randomized for next question");
+          } else {
+            console.log("Options are in string format, converting to objects before shuffling");
+            // Convert string options to objects, then shuffle
+            const objectOptions = (normalizedQuestion.options as string[]).map((text, idx) => ({
+              option_text: text,
+              option_order: idx,
+              option_id: idx
+            }));
+            normalizedQuestion.options = shuffleArray(objectOptions, 'option_order');
+          }
+        }
+        
+        setCurrentQuestion(normalizedQuestion);
+        setSelectedOption(null); // Reset selection for the new question
+        setQuestionStartTime(Date.now()); // Reset timer for the new question
+      } else {
+        console.log("No next question available, test is complete:", response);
+        // If no next question, the test is complete
+        setTestProgress(100);
+        await testsAPI.finishTest(attemptId);
+        onComplete();
+      }
+    } catch (err: any) {
+      console.error('Error submitting answer:', err);
+      
+      // Handle case when error might be due to test being complete
+      if (err.response && err.response.status === 404) {
+        // If we get a 404, it might mean the test is already complete
+        console.warn("Received 404 when submitting answer, test might be complete");
+        try {
+          await testsAPI.finishTest(attemptId);
+          onComplete();
+          return;
+        } catch (finishErr) {
+          console.error("Failed to finish test after 404:", finishErr);
+        }
+      }
+      
+      setError(`Failed to submit answer: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+    // This function has been moved above to avoid reference before declaration
+  
+  /**
+   * Format the remaining time as MM:SS
+   */
+  const formatTime = (timeInSeconds: number): string => {
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = timeInSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+  
+  /**
+   * Get the color for the difficulty indicator
+   */
+  const getDifficultyColor = (difficulty?: string): string => {
+    switch (difficulty?.toLowerCase()) {
+      case 'easy': return '#4caf50'; // green
+      case 'medium': return '#ff9800'; // orange
+      case 'hard': return '#f44336'; // red
+      default: return '#9e9e9e'; // grey for unknown
+    }
+  };
+  
+  /**
+   * Render a loading state when fetching questions
+   */
+  if (isLoading && !currentQuestion) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 5 }}>
+        <CircularProgress />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Loading your adaptive test...
+        </Typography>
+      </Box>
+    );
+  }
+  
+  /**
+   * Main render for the adaptive test interface
+   */
+  return (
+    <Box sx={{ maxWidth: '900px', mx: 'auto', mb: 4 }}>
+      <Paper elevation={3} sx={{ p: 3 }}>
+        {/* Test Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">
+            Adaptive Test ({adaptiveStrategy})
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <AccessTimeIcon sx={{ mr: 1 }} />
+            <Typography variant="body1">
+              {formatTime(timeLeft)}
+            </Typography>
+          </Box>
+        </Box>
+        
+        {/* Progress Indicator */}
+        <Box sx={{ mb: 2 }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={testProgress} 
+            sx={{ height: 10, borderRadius: 5 }}
+          />          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+            <Typography variant="caption">
+              Question {questionsAnswered + 1}{maxQuestions ? ` of ${maxQuestions}` : ''}
+            </Typography>
+            <Typography variant="caption">Adaptive Test</Typography>
+          </Box>
+        </Box>
+        
+        {error && (
+          <ErrorAlert error={error} onClose={() => setError(null)} />
+        )}
+        
+        {/* Current Question */}
+        {currentQuestion && (
+          <Box>
+            {/* Question Header with Difficulty */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Question {questionsAnswered + 1}
+              </Typography>
+              
+              {showDifficultyIndicator && currentQuestion.difficulty_level && (
+                <Chip 
+                  label={currentQuestion.difficulty_level}
+                  size="small"
+                  sx={{ 
+                    backgroundColor: getDifficultyColor(currentQuestion.difficulty_level),
+                    color: 'white'
+                  }}
+                />
+              )}
+            </Box>
+            
+            {/* Question Text */}
+            <Card variant="outlined" sx={{ mb: 3, backgroundColor: 'background.default' }}>
+              <CardContent>
+                <Typography variant="body1">
+                  {currentQuestion.question_text}
+                </Typography>
+                
+                {/* Topic indicator if available */}
+                {currentQuestion.topic && (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
+                    Topic: {currentQuestion.topic}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+              {/* Answer Options */}
+            <RadioGroup
+              value={selectedOption}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedOption(e.target.value)}
+            >
+              {(() => {
+                // Debug options data
+                console.log("Rendering options:", currentQuestion.options);
+                
+                // Check if options is an array
+                if (Array.isArray(currentQuestion.options)) {
+                  if (currentQuestion.options.length === 0) {
+                    return <Typography color="error">No options available for this question</Typography>;
+                  }
+                  
+                  // Handle different option formats
+                  const firstOption = currentQuestion.options[0];
+                  
+                  if (typeof firstOption === 'string') {
+                    // String array format from backend
+                    return (currentQuestion.options as string[]).map((optionText, index) => (
+                      <FormControlLabel
+                        key={`option-${index}`}
+                        value={String(index)}
+                        control={<Radio disabled={isSubmitting} />}
+                        label={optionText || `Option ${index + 1}`}
+                        sx={{ mb: 1 }}
+                      />
+                    ));
+                  } else if (typeof firstOption === 'object' && firstOption !== null) {
+                    // Object format
+                    return (currentQuestion.options as QuestionOption[]).map((option, index) => (
+                      <FormControlLabel
+                        key={option.id || option.option_id || `option-${index}`}
+                        value={String(index)}
+                        control={<Radio disabled={isSubmitting} />}
+                        label={option.option_text || `Option ${index + 1}`}
+                        sx={{ mb: 1 }}
+                      />
+                    ));
+                  } else {
+                    // Unknown array content
+                    return <Typography color="error">Invalid option format</Typography>;
+                  }
+                } else if (currentQuestion.options) {
+                  // Options exists but is not an array
+                  return <Typography color="error">Options data is not in array format: {JSON.stringify(currentQuestion.options).substring(0, 100)}</Typography>;
+                } else {
+                  // No options property
+                  return <Typography color="error">Question is missing options</Typography>;
+                }
+              })()}
+            </RadioGroup>
+            
+            {/* Submit Answer Button */}
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={() => setShowConfirmSubmit(true)}
+              >
+                End Test
+              </Button>
+              
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={submitAnswer}
+                disabled={selectedOption === null || isSubmitting}
+                startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : null}
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit & Next Question'}
+              </Button>
+            </Box>
+          </Box>
+        )}
+      </Paper>
+      
+      {/* Confirm Submit Dialog */}
+      <Dialog open={showConfirmSubmit} onClose={() => setShowConfirmSubmit(false)}>
+        <DialogTitle>End Test?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to end the test? Your current progress will be saved and scored.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowConfirmSubmit(false)}>Cancel</Button>
+          <Button onClick={handleSubmitTest} variant="contained" color="primary">
+            End Test
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};

@@ -31,7 +31,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useNavigate } from 'react-router-dom';
 import { testsAPI, papersAPI } from '../services/api';
 import { TestInterface } from '../components/TestInterface';
+import { ThemedTestInterface } from '../components/ThemedTestInterface';
 import { AdaptiveTestInterface } from '../components/AdaptiveTestInterface';
+import { ThemedAdaptiveTestInterface } from '../components/ThemedAdaptiveTestInterface';
 import { CreateTestTemplateRequest } from '../types';
 
 interface Section {
@@ -752,7 +754,7 @@ export const PracticeTestPage: React.FC = () => {
         </Box>
       ) : (
         attemptId && (          isAdaptiveTestActive ? (
-            <AdaptiveTestInterface 
+            <ThemedAdaptiveTestInterface 
               attemptId={attemptId as number} 
               onComplete={() => {
                 setTestStarted(false);
@@ -761,9 +763,14 @@ export const PracticeTestPage: React.FC = () => {
               }}
               adaptiveStrategy={adaptiveStrategy}
               testDuration={testDuration}
+              userInfo={{
+                candidateName: 'Test User',
+                examName: 'Practice Test',
+                subject: selectedSections.map(s => s.section_name).join(', ')
+              }}
             />
           ) : (
-            <TestInterface 
+            <ThemedTestInterface 
               attemptId={attemptId as number} 
               questions={questions} 
               onComplete={() => {
@@ -771,6 +778,11 @@ export const PracticeTestPage: React.FC = () => {
                 navigate('/results');
               }}
               testDuration={testDuration}
+              userInfo={{
+                candidateName: 'Test User',
+                examName: 'Practice Test',
+                subject: selectedSections.map(s => s.section_name).join(', ')
+              }}
             />
           )
         )
