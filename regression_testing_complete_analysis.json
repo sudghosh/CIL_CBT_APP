@@ -1,0 +1,86 @@
+{
+  "task": "Practice-Test and Mock-Test regression testing",
+  "status": "COMPLETED",
+  "critical_issue_confirmed": true,
+  "findings": {
+    "mock_test_analysis": {
+      "attempt_id": 105,
+      "test_type": "Mock",
+      "is_adaptive": false,
+      "scoring_issue": {
+        "displayed_score": 50.0,
+        "weighted_score": 50.0,
+        "expected_score": 100.0,
+        "root_cause": "Backend includes unanswered questions in total count",
+        "calculation_error": "2 correct / 4 total = 50% instead of 2 correct / 2 attempted = 100%"
+      },
+      "question_analysis": {
+        "total_questions_in_results": 4,
+        "attempted_questions": 2,
+        "unanswered_questions": 2,
+        "questions_answered_correctly": 2,
+        "questions_answered_incorrectly": 0
+      },
+      "question_details": [
+        {
+          "question_id": 2,
+          "question_text": "Sample question 2 for Current Affairs",
+          "selected_option_index": null,
+          "correct_option_index": 0,
+          "marks": null,
+          "time_taken_seconds": 0,
+          "status": "NOT_ANSWERED",
+          "note": "Question never attempted - should not be included in scoring"
+        },
+        {
+          "question_id": 1,
+          "question_text": "Sample question 1 for Current Affairs",
+          "selected_option_index": null,
+          "correct_option_index": 0,
+          "marks": null,
+          "time_taken_seconds": 0,
+          "status": "NOT_ANSWERED",
+          "note": "Question never attempted - should not be included in scoring"
+        },
+        {
+          "question_id": 56,
+          "question_text": "Sample question 1 for Strategic Management",
+          "selected_option_index": 0,
+          "correct_option_index": 0,
+          "marks": 1.0,
+          "time_taken_seconds": 15,
+          "status": "CORRECT",
+          "note": "Question attempted and answered correctly"
+        },
+        {
+          "question_id": 42,
+          "question_text": "Sample question 2 for Labor Laws",
+          "selected_option_index": 0,
+          "correct_option_index": 0,
+          "marks": 1.0,
+          "time_taken_seconds": 10,
+          "status": "CORRECT",
+          "note": "Question attempted and answered correctly"
+        }
+      ]
+    },
+    "practice_test_analysis": {
+      "attempt_id": 104,
+      "test_type": "Practice",
+      "is_adaptive": false,
+      "scoring_issue": {
+        "displayed_score": 50.0,
+        "note": "Same issue confirmed in Practice-Test mode from conversation summary"
+      }
+    }
+  },
+  "issue_summary": "The backend scoring issue affects ALL test types - Adaptive, Practice, and Mock-Test modes. The backend includes questions that were never attempted by the user in the scoring calculation.",
+  "affected_test_types": ["Adaptive", "Practice", "Mock-Test"],
+  "universal_fix_needed": "The backend scoring logic needs to be modified to only count questions that were actually attempted by the user (have non-null selected_option_index or time_taken_seconds > 0) for all test types.",
+  "next_steps": [
+    "Implement backend scoring fix",
+    "Apply fix to all test types",
+    "Validate fix with new tests across all modes",
+    "Update Memory Bank with implementation status"
+  ]
+}

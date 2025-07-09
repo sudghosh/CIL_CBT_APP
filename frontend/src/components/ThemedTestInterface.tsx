@@ -528,9 +528,25 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
     // Auto-save answer
     try {
       setIsSavingAnswer(true);
+      
+      // Get the original option index for backend submission
+      // This is critical for correct answer validation when options are shuffled
+      let submissionIndex = parseInt(optionIndex);
+      
+      // If options were shuffled, we need to get the original index
+      if (Array.isArray(currentShuffledQuestion.options) && currentShuffledQuestion.options.length > 0) {
+        const selectedOptionData = currentShuffledQuestion.options[submissionIndex];
+        
+        // Check if the option has originalIndex property (from shuffling)
+        if (selectedOptionData && typeof selectedOptionData === 'object' && 'originalIndex' in selectedOptionData) {
+          submissionIndex = (selectedOptionData as any).originalIndex;
+          console.log(`Mock/Practice Test: Converting displayed index ${optionIndex} to original index ${submissionIndex} for question ${currentShuffledQuestion.question_id}`);
+        }
+      }
+      
       const submission: AnswerSubmission = {
         question_id: currentShuffledQuestion.question_id,
-        selected_option_index: parseInt(optionIndex),
+        selected_option_index: submissionIndex,
         time_taken_seconds: Math.round((testDuration * 60 - timeLeft)),
         is_marked_for_review: markedForReview.has(currentQuestionIndex)
       };

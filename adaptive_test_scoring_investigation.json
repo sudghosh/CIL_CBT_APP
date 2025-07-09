@@ -1,0 +1,64 @@
+{
+  "task": "Adaptive test scoring investigation",
+  "status": "COMPLETED",
+  "critical_issue_identified": true,
+  "findings": {
+    "attempt_id": 103,
+    "test_configuration": {
+      "test_type": "Practice",
+      "is_adaptive": true,
+      "requested_questions": 2,
+      "actual_questions_attempted": 2,
+      "total_questions_in_results": 4
+    },
+    "scoring_issue": {
+      "displayed_score": 50.0,
+      "weighted_score": 50.0,
+      "expected_score": 100.0,
+      "root_cause": "Backend includes unanswered questions in total count",
+      "calculation_error": "2 correct / 4 total = 50% instead of 2 correct / 2 attempted = 100%"
+    },
+    "question_details": [
+      {
+        "question_id": 12,
+        "question_text": "Sample question 2 for Geography",
+        "selected_option_index": null,
+        "correct_option_index": 0,
+        "marks": null,
+        "status": "NOT_ANSWERED",
+        "note": "This question was never presented to user during adaptive test"
+      },
+      {
+        "question_id": 6,
+        "question_text": "Sample question 1 for History",
+        "selected_option_index": null,
+        "correct_option_index": 0,
+        "marks": null,
+        "status": "NOT_ANSWERED",
+        "note": "This question was never presented to user during adaptive test"
+      },
+      {
+        "question_id": 74,
+        "question_text": "What is the capital of France?",
+        "selected_option_index": 0,
+        "correct_option_index": 0,
+        "marks": 1.0,
+        "time_taken_seconds": 30,
+        "status": "CORRECT",
+        "note": "First question presented and answered correctly"
+      },
+      {
+        "question_id": 38,
+        "question_text": "Sample question 3 for Industrial Relations",
+        "selected_option_index": 0,
+        "correct_option_index": 0,
+        "marks": 1.0,
+        "time_taken_seconds": 45,
+        "status": "CORRECT",
+        "note": "Second question presented and answered correctly"
+      }
+    ]
+  },
+  "issue_summary": "The backend is including questions that were never presented to the user in the adaptive test scoring calculation. This causes the Results page to show 50% instead of 100% when the user answers all attempted questions correctly.",
+  "fix_needed": "The backend scoring logic needs to be modified to only count questions that were actually presented to the user (have non-null selected_option_index or time_taken_seconds > 0) in adaptive tests."
+}

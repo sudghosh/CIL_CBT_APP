@@ -225,6 +225,67 @@ def get_personalized_questions(
     
     return selected_questions
 
+def calculate_test_score(test_type: str, test_answers: List[TestAnswer]) -> tuple[float, dict]:
+    """
+    Calculate test score based on test type with appropriate denominator.
+    
+    Args:
+        test_type: Type of test ('adaptive', 'practice', 'mock', etc.)
+        test_answers: List of test answers from the attempt
+    
+    Returns:
+        tuple: (score_percentage, calculation_details)
+        
+    Scoring Logic:
+        - Adaptive/Practice: Uses attempted questions as denominator
+        - Mock: Uses total questions in test as denominator
+        - Unknown: Defaults to attempted questions with warning
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Count correct answers and attempted questions
+    correct_answers = sum(1 for answer in test_answers if 
+                         answer.selected_option_index is not None and hasattr(answer, 'marks') and answer.marks and answer.marks > 0)
+    attempted_questions = sum(1 for answer in test_answers if answer.selected_option_index is not None)
+    total_questions = len(test_answers)
+    
+    # Determine scoring method based on test type
+    test_type_lower = test_type.lower().replace('-', '').replace('_', '')
+    
+    if test_type_lower in ['adaptive', 'practice']:
+        # Score based on attempted questions only
+        denominator = attempted_questions
+        scoring_method = "attempted_only"
+    elif test_type_lower in ['mock', 'mocktest']:
+        # Score based on total questions in test  
+        denominator = total_questions
+        scoring_method = "total_questions"
+    else:
+        # Default to attempted questions for unknown test types
+        denominator = attempted_questions
+        scoring_method = "attempted_only_default"
+        logger.warning(f"Unknown test type '{test_type}', defaulting to attempted-only scoring")
+    
+    # Calculate score, handling division by zero
+    if denominator == 0:
+        score = 0.0
+    else:
+        score = (correct_answers / denominator) * 100
+    
+    # Calculation details for debugging and logging
+    details = {
+        'test_type': test_type,
+        'scoring_method': scoring_method,
+        'correct_answers': correct_answers,
+        'attempted_questions': attempted_questions,
+        'total_questions': total_questions,
+        'denominator_used': denominator,
+        'score_percentage': score
+    }
+    
+    logger.info(f"Test scoring calculation: {details}")
+    return score, details
+
 router = APIRouter(prefix="/tests", tags=["tests"])
 
 TestStatusEnum = Literal["InProgress", "Completed", "Abandoned"]
@@ -1100,23 +1161,29 @@ async def finish_attempt(
         
         questions_dict = {q.question_id: q for q in questions}
         
-        # Count correct answers
-        correct_answers = 0
-        total_questions = len(answers)
-        
+        # Set marks for answers based on correctness
         for answer in answers:
             question = questions_dict.get(answer.question_id)
             if question and answer.selected_option_index is not None:
+                logger.info(f"Checking answer for question {answer.question_id}: selected={answer.selected_option_index}, correct_option={question.correct_option_index}")
                 if answer.selected_option_index == question.correct_option_index:
-                    correct_answers += 1
-                    answer.is_correct = True
+                    answer.marks = 1.0  # Assign marks for correct answers
+                    logger.info(f"Answer is CORRECT - marks set to 1.0")
                 else:
-                    answer.is_correct = False
+                    answer.marks = 0.0  # No marks for incorrect answers
+                    logger.info(f"Answer is INCORRECT - marks set to 0.0")
+            else:
+                # Unanswered questions
+                answer.marks = 0.0
+                logger.debug(f"Question {answer.question_id} was not answered - marks set to 0.0")
         
-        # Calculate score as percentage
-        score = 0
-        if total_questions > 0:
-            score = (correct_answers / total_questions) * 100
+        # Flush changes to ensure marks are updated before scoring calculation
+        db.flush()
+        
+        # Calculate score using test-type-aware logic
+        logger.info(f"Calling calculate_test_score with test_type='{attempt.test_type}' and {len(answers)} answers")
+        score, score_details = calculate_test_score(attempt.test_type, answers)
+        logger.info(f"Score calculation result: {score_details}")
         
         attempt.score = score
         attempt.weighted_score = score  # For now, no weighting
@@ -1478,21 +1545,25 @@ async def get_next_adaptive_question(
             
             # Calculate score
             answers = db.query(TestAnswer).filter(TestAnswer.attempt_id == attempt_id).all()
-            correct_answers = 0
-            total_answers = 0
             
+            # Set marks for answers based on correctness
             for answer in answers:
                 if answer.selected_option_index is not None:
-                    total_answers += 1
                     question = db.query(Question).filter(Question.question_id == answer.question_id).first()
                     if question and answer.selected_option_index == question.correct_option_index:
-                        correct_answers += 1
+                        answer.marks = 1.0  # Assign marks for correct answers
+                    else:
+                        answer.marks = 0.0  # No marks for incorrect answers
+                else:
+                    # Unanswered questions
+                    answer.marks = 0.0
             
-            # Only calculate score if there are answers
-            if total_answers > 0:
-                attempt.score = (correct_answers / total_answers) * 100
-            else:
-                attempt.score = 0
+            # Flush changes to ensure marks are updated before scoring calculation
+            db.flush()
+            
+            # Calculate score using test-type-aware logic
+            score, score_details = calculate_test_score(attempt.test_type, answers)
+            attempt.score = score
             
             db.add(attempt)
             db.commit()
