@@ -1,0 +1,14 @@
+{
+  "test_type": "Adaptive Test",
+  "template_id": 111,
+  "paper_id": 1,
+  "section_id": 1,
+  "max_questions": 2,
+  "strategy": "adaptive",
+  "duration_minutes": 30,
+  "attempt_id": 102,
+  "created_at": null,
+  "status": "InProgress",
+  "is_adaptive": true,
+  "adaptive_strategy": "adaptive"
+}
