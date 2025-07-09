@@ -1960,7 +1960,7 @@ export const ResultsPage: React.FC = () => {
                         </Box>
                       </Box>                      <Typography sx={{ mb: 1, display: 'flex' }}>
                         <Box component="span" sx={{ fontWeight: 'bold', width: 75 }}>Date:</Box>
-                        <Box component="span" sx={{ ml: 1 }}>{formatSafeDate(selectedTestResult?.start_time || selectedTest.start_time, 'localeString')}</Box>
+                        <Box component="span" sx={{ ml: 1 }}>{formatSafeDate(selectedTest.start_time, 'localeString')}</Box>
                       </Typography>                      <Typography sx={{ mb: 1, display: 'flex' }}>
                         <Box component="span" sx={{ fontWeight: 'bold', width: 75 }}>Test ID:</Box>
                         <Box component="span" sx={{ ml: 1 }}>{selectedTest.test_info?.id || 'N/A'}</Box>
@@ -2217,6 +2217,22 @@ export const ResultsPage: React.FC = () => {
                             >
                               {correctPercent}%
                             </Typography>
+                            {selectedTest.is_adaptive && (
+                              <Typography 
+                                variant="caption" 
+                                color="text.secondary"
+                                sx={{ 
+                                  mt: 0.5, 
+                                  fontWeight: 'medium',
+                                  textAlign: 'center',
+                                  zIndex: 2,
+                                  fontSize: '0.7rem',
+                                  position: 'relative'
+                                }}
+                              >
+                                ({correct}/{total} attempted)
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                         
