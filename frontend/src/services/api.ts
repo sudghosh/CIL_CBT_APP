@@ -53,7 +53,8 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
   // Add timeout to prevent hanging requests
-  timeout: 20000,
+  // Increased to 70s to accommodate AI processing (backend has 60s total timeout)
+  timeout: 70000,
   // Disable withCredentials for CORS with wildcard origin (*)
   withCredentials: false,
 });
