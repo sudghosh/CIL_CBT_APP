@@ -44,6 +44,9 @@ export const AITrendAnalysisTab: React.FC<AITabProps> = ({ userId, userPerforman
   const [analysisType, setAnalysisType] = useState<'overall' | 'topic' | 'difficulty' | 'time'>('overall');
   const [aiAvailable, setAiAvailable] = useState<boolean>(false);
   const [checkingAvailability, setCheckingAvailability] = useState<boolean>(true);
+  const [retryCount, setRetryCount] = useState<number>(0);
+  const [lastSuccessfulAnalysis, setLastSuccessfulAnalysis] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
 
   // Check AI availability on component mount
   useEffect(() => {
@@ -76,26 +79,33 @@ export const AITrendAnalysisTab: React.FC<AITabProps> = ({ userId, userPerforman
     }));
   };
 
-  const fetchTrendAnalysis = async () => {
+  const fetchTrendAnalysis = async (isRetryAttempt = false) => {
     if (!aiAvailable) {
       setError('No AI API keys available. Please configure API keys in admin settings.');
       return;
     }
 
-    if (!userPerformanceData || userPerformanceData.length === 0) {
-      setError('No performance data available for analysis.');
-      return;
-    }
-
+    // If no performance data provided, let the backend handle it
+    // The backend can fetch user performance data internally
     setLoading(true);
     setError(null);
     
+    if (isRetryAttempt) {
+      setIsRetrying(true);
+      setRetryCount(prev => prev + 1);
+    } else {
+      setRetryCount(0);
+      setIsRetrying(false);
+    }
+    
     try {
-      const performanceData = transformUserDataToPerformanceData(userPerformanceData);
+      const performanceData = userPerformanceData && userPerformanceData.length > 0 
+        ? transformUserDataToPerformanceData(userPerformanceData)
+        : []; // Let backend fetch data if frontend data is empty
       
       const request: TrendAnalysisRequest = {
         userId,
-        performanceData,
+        performanceData, // Can be empty - backend will fetch if needed
         timeframe,
         analysisType
       };
@@ -104,18 +114,53 @@ export const AITrendAnalysisTab: React.FC<AITabProps> = ({ userId, userPerforman
       
       setInsights(result.insights);
       setTrendData(result.trendData);
+      setLastSuccessfulAnalysis(new Date().toLocaleString());
+      setRetryCount(0); // Reset retry count on success
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch trend analysis';
+      let errorMessage = 'Failed to fetch trend analysis';
+      let canRetry = true;
+      
+      if (err instanceof Error) {
+        // Handle different types of errors with user-friendly messages
+        if (err.message.includes('timeout') || err.message.includes('timed out')) {
+          errorMessage = `AI analysis timed out${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. The AI service may be experiencing high demand.`;
+          canRetry = retryCount < 3;
+        } else if (err.message.includes('503') || err.message.includes('unavailable')) {
+          errorMessage = `AI services are temporarily unavailable${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. This may be due to high demand or maintenance.`;
+          canRetry = retryCount < 3;
+        } else if (err.message.includes('401') || err.message.includes('unauthorized')) {
+          errorMessage = 'Authentication failed. Please refresh the page and try again.';
+          canRetry = false;
+        } else if (err.message.includes('403') || err.message.includes('forbidden')) {
+          errorMessage = 'You don\'t have permission to access AI features. Please contact your administrator.';
+          canRetry = false;
+        } else if (err.message.includes('Network Error') || err.message.includes('ERR_NETWORK')) {
+          errorMessage = `Network connection issue${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. Please check your internet connection.`;
+          canRetry = retryCount < 2;
+        } else {
+          errorMessage = err.message;
+          canRetry = retryCount < 2;
+        }
+      }
+      
+      // Add retry suggestion to error message if applicable
+      if (canRetry) {
+        errorMessage += ' You can try again or wait a moment for the service to recover.';
+      } else if (retryCount >= 3) {
+        errorMessage += ' Maximum retry attempts reached. Please try again later.';
+      }
+      
       setError(errorMessage);
       console.error('Trend analysis error:', err);
     } finally {
       setLoading(false);
+      setIsRetrying(false);
     }
   };
 
   useEffect(() => {
-    if (aiAvailable && userPerformanceData && userPerformanceData.length > 0) {
+    if (aiAvailable) {
       fetchTrendAnalysis();
     }
   }, [aiAvailable, userId, userPerformanceData, timeframe, analysisType]);
@@ -192,7 +237,7 @@ export const AITrendAnalysisTab: React.FC<AITabProps> = ({ userId, userPerforman
             </FormControl>
             <Tooltip title="Refresh Analysis">
               <span>
-                <IconButton onClick={fetchTrendAnalysis} disabled={loading || !aiAvailable}>
+                <IconButton onClick={() => fetchTrendAnalysis(false)} disabled={loading || !aiAvailable}>
                   <Refresh />
                 </IconButton>
               </span>
@@ -203,25 +248,64 @@ export const AITrendAnalysisTab: React.FC<AITabProps> = ({ userId, userPerforman
         {renderApiKeyStatus()}
 
         {loading && (
-          <Box display="flex" justifyContent="center" py={4}>
-            <CircularProgress />
-            <Typography variant="body2" sx={{ ml: 2 }}>
-              Analyzing performance trends with AI...
+          <Box display="flex" flexDirection="column" alignItems="center" py={4}>
+            <CircularProgress size={40} />
+            <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
+              {isRetrying ? 
+                `Retrying AI analysis... (Attempt ${retryCount + 1})` : 
+                'Analyzing performance trends with AI...'
+              }
             </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+              {isRetrying ? 
+                'The previous attempt failed, trying again with improved settings...' :
+                'This may take up to a minute during high demand periods'
+              }
+            </Typography>
+            {retryCount > 0 && (
+              <Typography variant="caption" color="warning.main" sx={{ mt: 1, textAlign: 'center' }}>
+                Experiencing delays due to high AI service demand
+              </Typography>
+            )}
           </Box>
         )}
 
         {error && (
           <Alert 
-            severity="error" 
+            severity={retryCount >= 3 ? "error" : "warning"}
             action={
-              <Button size="small" onClick={onRetry || fetchTrendAnalysis}>
-                Retry
-              </Button>
+              <Box display="flex" gap={1}>
+                {retryCount < 3 && (
+                  <Button 
+                    size="small" 
+                    onClick={() => fetchTrendAnalysis(true)}
+                    disabled={loading}
+                  >
+                    Retry
+                  </Button>
+                )}
+                <Button 
+                  size="small" 
+                  onClick={() => onRetry && onRetry()}
+                  disabled={loading}
+                >
+                  {retryCount >= 3 ? 'Try Later' : 'Manual Retry'}
+                </Button>
+              </Box>
             }
             sx={{ mb: 2 }}
           >
-            {error}
+            <Box>
+              <Typography variant="subtitle2">
+                {retryCount >= 3 ? 'Service Temporarily Unavailable' : 'AI Service Issue'}
+              </Typography>
+              <Typography variant="body2">{error}</Typography>
+              {lastSuccessfulAnalysis && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Last successful analysis: {lastSuccessfulAnalysis}
+                </Typography>
+              )}
+            </Box>
           </Alert>
         )}
 
@@ -288,26 +372,29 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
     opportunities: [],
     patterns: []
   });
+  const [aiAvailable, setAiAvailable] = useState<boolean>(false);
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(true);
+  const [retryCount, setRetryCount] = useState<number>(0);
+  const [lastSuccessfulAnalysis, setLastSuccessfulAnalysis] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
 
-  // Check API key availability
-  const { 
-    apiKey: googleKey, 
-    loading: googleLoading, 
-    error: googleError,
-    usingFallback: googleFallback,
-    isAvailable: googleAvailable
-  } = useApiKey({ keyType: 'google', autoFetch: true });
-
-  const { 
-    apiKey: openRouterKey, 
-    loading: openRouterLoading, 
-    error: openRouterError,
-    usingFallback: openRouterFallback,
-    isAvailable: openRouterAvailable
-  } = useApiKey({ keyType: 'openrouter', autoFetch: true });
-
-  const isApiKeyLoading = googleLoading || openRouterLoading;
-  const hasAnyApiKey = googleAvailable || openRouterAvailable;
+  // Check AI availability on component mount (works for all users)
+  useEffect(() => {
+    const checkAI = async () => {
+      setCheckingAvailability(true);
+      try {
+        const available = await aiAnalyticsService.checkAIAvailability();
+        setAiAvailable(available);
+      } catch (error) {
+        console.error('Failed to check AI availability:', error);
+        setAiAvailable(false);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    
+    checkAI();
+  }, []);
 
   const transformUserDataToPerformanceData = (userData: any[]): PerformanceDataPoint[] => {
     if (!userData || userData.length === 0) return [];
@@ -348,22 +435,28 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
     return categories;
   };
 
-  const fetchInsights = async () => {
-    if (!hasAnyApiKey) {
-      setError('No AI API keys available. Please configure API keys in admin settings.');
+  const fetchInsights = async (isRetryAttempt = false) => {
+    if (!aiAvailable) {
+      setError('AI services are not available. Please contact your administrator if API keys need to be configured.');
       return;
     }
 
-    if (!userPerformanceData || userPerformanceData.length === 0) {
-      setError('No performance data available for insights generation.');
-      return;
-    }
-
+    // Allow backend to fetch data if frontend data is empty
     setLoading(true);
     setError(null);
     
+    if (isRetryAttempt) {
+      setIsRetrying(true);
+      setRetryCount(prev => prev + 1);
+    } else {
+      setRetryCount(0);
+      setIsRetrying(false);
+    }
+    
     try {
-      const performanceData = transformUserDataToPerformanceData(userPerformanceData);
+      const performanceData = userPerformanceData && userPerformanceData.length > 0 
+        ? transformUserDataToPerformanceData(userPerformanceData)
+        : []; // Backend will fetch data if needed
       
       const request: TrendAnalysisRequest = {
         userId,
@@ -380,52 +473,81 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
       // Categorize insights for better organization
       const categorized = categorizeInsights(result.insights);
       setInsightCategories(categorized);
+      setLastSuccessfulAnalysis(new Date().toLocaleString());
+      setRetryCount(0); // Reset retry count on success
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch performance insights';
+      let errorMessage = 'Failed to fetch performance insights';
+      let canRetry = true;
+      
+      if (err instanceof Error) {
+        // Handle different types of errors with user-friendly messages
+        if (err.message.includes('timeout') || err.message.includes('timed out')) {
+          errorMessage = `AI insights analysis timed out${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. The AI service may be experiencing high demand.`;
+          canRetry = retryCount < 3;
+        } else if (err.message.includes('503') || err.message.includes('unavailable')) {
+          errorMessage = `AI services are temporarily unavailable${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. This may be due to high demand or maintenance.`;
+          canRetry = retryCount < 3;
+        } else if (err.message.includes('401') || err.message.includes('unauthorized')) {
+          errorMessage = 'Authentication failed. Please refresh the page and try again.';
+          canRetry = false;
+        } else if (err.message.includes('403') || err.message.includes('forbidden')) {
+          errorMessage = 'You don\'t have permission to access AI features. Please contact your administrator.';
+          canRetry = false;
+        } else if (err.message.includes('Network Error') || err.message.includes('ERR_NETWORK')) {
+          errorMessage = `Network connection issue${retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}. Please check your internet connection.`;
+          canRetry = retryCount < 2;
+        } else {
+          errorMessage = err.message;
+          canRetry = retryCount < 2;
+        }
+      }
+      
+      // Add retry suggestion to error message if applicable
+      if (canRetry) {
+        errorMessage += ' You can try again or wait a moment for the service to recover.';
+      } else if (retryCount >= 3) {
+        errorMessage += ' Maximum retry attempts reached. Please try again later.';
+      }
+      
       setError(errorMessage);
       console.error('Performance insights error:', err);
     } finally {
       setLoading(false);
+      setIsRetrying(false);
     }
   };
 
   useEffect(() => {
-    if (hasAnyApiKey && userPerformanceData && userPerformanceData.length > 0) {
+    if (aiAvailable) {
       fetchInsights();
     }
-  }, [hasAnyApiKey, userId, userPerformanceData, analysisType]);
+  }, [aiAvailable, userId, userPerformanceData, analysisType]);
 
   const renderApiKeyStatus = () => {
-    if (isApiKeyLoading) {
+    if (checkingAvailability) {
       return (
         <Alert severity="info" icon={<CircularProgress size={20} />} sx={{ mb: 2 }}>
-          Checking AI capabilities...
+          Checking AI service availability...
         </Alert>
       );
     }
 
-    if (!hasAnyApiKey) {
+    if (!aiAvailable) {
       return (
         <Alert 
           severity="warning" 
           icon={<Warning />}
-          action={
-            <Button size="small" color="inherit" onClick={() => window.location.href = '/admin/api-keys'}>
-              Configure API Keys
-            </Button>
-          }
           sx={{ mb: 2 }}
         >
-          AI insights require API key configuration. Admin users can enable this feature.
+          AI insights are currently unavailable. Please try again later or contact your administrator.
         </Alert>
       );
     }
 
     return (
       <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 2 }}>
-        AI insights enabled - {googleAvailable ? 'Google AI' : 'OpenRouter'} 
-        {(googleFallback || openRouterFallback) && ' (using fallback key)'}
+        AI insights are ready and available
       </Alert>
     );
   };
@@ -484,7 +606,7 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
             </FormControl>
             <Tooltip title="Refresh Insights">
               <span>
-                <IconButton onClick={fetchInsights} disabled={loading || !hasAnyApiKey}>
+                <IconButton onClick={() => fetchInsights(false)} disabled={loading || !aiAvailable}>
                   <Refresh />
                 </IconButton>
               </span>
@@ -495,29 +617,68 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
         {renderApiKeyStatus()}
 
         {loading && (
-          <Box display="flex" justifyContent="center" py={4}>
+          <Box display="flex" flexDirection="column" alignItems="center" py={4}>
             <CircularProgress />
-            <Typography variant="body2" sx={{ ml: 2 }}>
-              Generating AI-powered performance insights...
+            <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
+              {isRetrying ? 
+                `Retrying insights generation... (Attempt ${retryCount + 1})` : 
+                'Generating AI-powered performance insights...'
+              }
             </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+              {isRetrying ? 
+                'Previous attempt failed, trying again...' :
+                'Analyzing your performance patterns and trends'
+              }
+            </Typography>
+            {retryCount > 0 && (
+              <Typography variant="caption" color="warning.main" sx={{ mt: 1, textAlign: 'center' }}>
+                AI service is experiencing high demand
+              </Typography>
+            )}
           </Box>
         )}
 
         {error && (
           <Alert 
-            severity="error" 
+            severity={retryCount >= 3 ? "error" : "warning"}
             action={
-              <Button size="small" onClick={onRetry || fetchInsights}>
-                Retry
-              </Button>
+              <Box display="flex" gap={1}>
+                {retryCount < 3 && (
+                  <Button 
+                    size="small" 
+                    onClick={() => fetchInsights(true)}
+                    disabled={loading}
+                  >
+                    Retry
+                  </Button>
+                )}
+                <Button 
+                  size="small" 
+                  onClick={() => onRetry && onRetry()}
+                  disabled={loading}
+                >
+                  {retryCount >= 3 ? 'Try Later' : 'Manual Retry'}
+                </Button>
+              </Box>
             }
             sx={{ mb: 2 }}
           >
-            {error}
+            <Box>
+              <Typography variant="subtitle2">
+                {retryCount >= 3 ? 'Insights Generation Failed' : 'AI Service Issue'}
+              </Typography>
+              <Typography variant="body2">{error}</Typography>
+              {lastSuccessfulAnalysis && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Last successful analysis: {lastSuccessfulAnalysis}
+                </Typography>
+              )}
+            </Box>
           </Alert>
         )}
 
-        {!loading && !error && hasAnyApiKey && insights.length > 0 && (
+        {!loading && !error && aiAvailable && insights.length > 0 && (
           <Box>
             {/* Categorized insights for better organization */}
             {renderInsightCategory(
@@ -571,7 +732,7 @@ export const AIPerformanceInsightsTab: React.FC<AITabProps> = ({ userId, userPer
           </Box>
         )}
 
-        {!loading && !error && hasAnyApiKey && (!userPerformanceData || userPerformanceData.length === 0) && (
+        {!loading && !error && aiAvailable && (!userPerformanceData || userPerformanceData.length === 0) && (
           <Alert severity="info">
             <Typography variant="subtitle2">No Performance Data</Typography>
             <Typography variant="body2">
@@ -610,26 +771,26 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
     longTerm: [],
     practice: []
   });
+  const [aiAvailable, setAiAvailable] = useState<boolean>(false);
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(true);
 
-  // Check API key availability
-  const { 
-    apiKey: googleKey, 
-    loading: googleLoading, 
-    error: googleError,
-    usingFallback: googleFallback,
-    isAvailable: googleAvailable
-  } = useApiKey({ keyType: 'google', autoFetch: true });
-
-  const { 
-    apiKey: openRouterKey, 
-    loading: openRouterLoading, 
-    error: openRouterError,
-    usingFallback: openRouterFallback,
-    isAvailable: openRouterAvailable
-  } = useApiKey({ keyType: 'openrouter', autoFetch: true });
-
-  const isApiKeyLoading = googleLoading || openRouterLoading;
-  const hasAnyApiKey = googleAvailable || openRouterAvailable;
+  // Check AI availability on component mount (works for all users)
+  useEffect(() => {
+    const checkAI = async () => {
+      setCheckingAvailability(true);
+      try {
+        const available = await aiAnalyticsService.checkAIAvailability();
+        setAiAvailable(available);
+      } catch (error) {
+        console.error('Failed to check AI availability:', error);
+        setAiAvailable(false);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    
+    checkAI();
+  }, []);
 
   const transformUserDataToPerformanceData = (userData: any[]): PerformanceDataPoint[] => {
     if (!userData || userData.length === 0) return [];
@@ -719,21 +880,19 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
   };
 
   const fetchRecommendations = async () => {
-    if (!hasAnyApiKey) {
-      setError('No AI API keys available. Please configure API keys in admin settings.');
+    if (!aiAvailable) {
+      setError('AI services are not available. Please contact your administrator if API keys need to be configured.');
       return;
     }
 
-    if (!userPerformanceData || userPerformanceData.length === 0) {
-      setError('No performance data available for generating recommendations.');
-      return;
-    }
-
+    // Allow backend to fetch data if frontend data is empty
     setLoading(true);
     setError(null);
     
     try {
-      const performanceData = transformUserDataToPerformanceData(userPerformanceData);
+      const performanceData = userPerformanceData && userPerformanceData.length > 0 
+        ? transformUserDataToPerformanceData(userPerformanceData)
+        : []; // Backend will fetch data if needed
       
       const request: TrendAnalysisRequest = {
         userId,
@@ -762,7 +921,25 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
       setStudyPlan(plan);
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch recommendations';
+      let errorMessage = 'Failed to fetch recommendations';
+      
+      if (err instanceof Error) {
+        // Handle different types of errors with user-friendly messages
+        if (err.message.includes('timeout') || err.message.includes('timed out')) {
+          errorMessage = 'AI analysis is taking longer than usual due to high demand. Please try again in a moment.';
+        } else if (err.message.includes('503') || err.message.includes('unavailable')) {
+          errorMessage = 'AI services are temporarily unavailable. Please try again in a few minutes.';
+        } else if (err.message.includes('401') || err.message.includes('unauthorized')) {
+          errorMessage = 'Authentication failed. Please refresh the page and try again.';
+        } else if (err.message.includes('403') || err.message.includes('forbidden')) {
+          errorMessage = 'You don\'t have permission to access AI features. Please contact your administrator.';
+        } else if (err.message.includes('Network Error') || err.message.includes('ERR_NETWORK')) {
+          errorMessage = 'Network connection issue. Please check your internet connection and try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
       setError(errorMessage);
       console.error('Question recommendations error:', err);
     } finally {
@@ -771,41 +948,35 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
   };
 
   useEffect(() => {
-    if (hasAnyApiKey && userPerformanceData && userPerformanceData.length > 0) {
+    if (aiAvailable) {
       fetchRecommendations();
     }
-  }, [hasAnyApiKey, userId, userPerformanceData, focusArea]);
+  }, [aiAvailable, userId, userPerformanceData, focusArea]);
 
   const renderApiKeyStatus = () => {
-    if (isApiKeyLoading) {
+    if (checkingAvailability) {
       return (
         <Alert severity="info" icon={<CircularProgress size={20} />} sx={{ mb: 2 }}>
-          Checking AI capabilities for recommendations...
+          Checking AI service availability...
         </Alert>
       );
     }
 
-    if (!hasAnyApiKey) {
+    if (!aiAvailable) {
       return (
         <Alert 
           severity="warning" 
           icon={<Warning />}
-          action={
-            <Button size="small" color="inherit" onClick={() => window.location.href = '/admin/api-keys'}>
-              Configure API Keys
-            </Button>
-          }
           sx={{ mb: 2 }}
         >
-          AI recommendations require API key configuration. Admin users can enable this feature.
+          AI recommendations are currently unavailable. Please try again later or contact your administrator.
         </Alert>
       );
     }
 
     return (
       <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 2 }}>
-        AI recommendations enabled - {googleAvailable ? 'Google AI' : 'OpenRouter'} 
-        {(googleFallback || openRouterFallback) && ' (using fallback key)'}
+        AI recommendations are ready and available
       </Alert>
     );
   };
@@ -910,7 +1081,7 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
             </FormControl>
             <Tooltip title="Refresh Recommendations">
               <span>
-                <IconButton onClick={fetchRecommendations} disabled={loading || !hasAnyApiKey}>
+                <IconButton onClick={fetchRecommendations} disabled={loading || !aiAvailable}>
                   <Refresh />
                 </IconButton>
               </span>
@@ -943,7 +1114,7 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
           </Alert>
         )}
 
-        {!loading && !error && hasAnyApiKey && (recommendations.length > 0 || insights.length > 0) && (
+        {!loading && !error && aiAvailable && (recommendations.length > 0 || insights.length > 0) && (
           <Box>
             {/* AI-Generated Study Plan */}
             {renderStudyPlan()}
@@ -1010,7 +1181,7 @@ export const AIQuestionRecommendationsTab: React.FC<AITabProps> = ({ userId, use
           </Box>
         )}
 
-        {!loading && !error && hasAnyApiKey && (!userPerformanceData || userPerformanceData.length === 0) && (
+        {!loading && !error && aiAvailable && (!userPerformanceData || userPerformanceData.length === 0) && (
           <Alert severity="info">
             <Typography variant="subtitle2">No Performance Data</Typography>
             <Typography variant="body2">

@@ -14,9 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field
+import asyncio
 import httpx
 import json
 import logging
+import re
 from datetime import datetime
 from enum import Enum
 
@@ -61,6 +63,10 @@ PROVIDER_CONFIGS = {
 
 # Failover order as requested: OpenRouter → Google → A4F
 PROVIDER_FAILOVER_ORDER = [APIKeyType.OPENROUTER, APIKeyType.GOOGLE, APIKeyType.A4F]
+
+# Timeout configurations
+AI_PROVIDER_TIMEOUT = 25.0  # Reduced from 30s to 25s per provider
+AI_TOTAL_TIMEOUT = 60.0     # Maximum total time for all providers (3 * 25s = 75s, but we cap at 60s)
 
 # --- Pydantic Models ---
 
@@ -185,7 +191,7 @@ async def call_openrouter_ai(api_key: str, prompt: str, model: str = None) -> Tu
             "max_tokens": 2000
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT) as client:
             response = await client.post(url, headers=headers, json=data)
             response.raise_for_status()
             
@@ -228,7 +234,7 @@ async def call_google_ai(api_key: str, prompt: str) -> Tuple[str, AIProviderStat
             }
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT) as client:
             response = await client.post(url, headers=headers, json=data)
             response.raise_for_status()
             
@@ -275,7 +281,7 @@ async def call_a4f_ai(api_key: str, prompt: str, model: str = None) -> Tuple[str
             "max_tokens": 2000
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=AI_PROVIDER_TIMEOUT) as client:
             response = await client.post(url, headers=headers, json=data)
             response.raise_for_status()
             
@@ -298,16 +304,76 @@ async def call_a4f_ai(api_key: str, prompt: str, model: str = None) -> Tuple[str
         logger.error(f"A4F API call failed: {e}")
         return "", AIProviderStatus.FAILED
 
+def extract_json_from_response(response: str) -> Dict[str, Any]:
+    """
+    Extract JSON from AI response text, handling various formats.
+    AI responses might include JSON in markdown code blocks or mixed with other text.
+    """
+    if not response or not response.strip():
+        return {}
+    
+    # First, try to parse the response directly as JSON
+    try:
+        return json.loads(response.strip())
+    except json.JSONDecodeError:
+        pass
+    
+    # Try to find JSON within markdown code blocks
+    json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+    matches = re.findall(json_pattern, response, re.DOTALL | re.IGNORECASE)
+    
+    for match in matches:
+        try:
+            return json.loads(match.strip())
+        except json.JSONDecodeError:
+            continue
+    
+    # Try to find JSON object within the text (without code blocks)
+    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+    matches = re.findall(json_pattern, response, re.DOTALL)
+    
+    for match in matches:
+        try:
+            # Try to parse each potential JSON object
+            parsed = json.loads(match.strip())
+            # Check if it looks like our expected structure
+            if isinstance(parsed, dict) and ('insights' in parsed or 'recommendations' in parsed):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+    
+    # If no valid JSON found, create a fallback structure
+    logger.warning(f"Could not extract JSON from AI response: {response[:200]}...")
+    return {
+        "insights": [
+            {
+                "type": "insight",
+                "title": "AI Analysis Summary",
+                "content": response[:500] + ("..." if len(response) > 500 else ""),
+                "confidence": 0.7
+            }
+        ],
+        "recommendations": ["Continue practicing regularly", "Focus on areas that need improvement"]
+    }
+
 async def generate_ai_response(db: Session, prompt: str) -> str:
     """
-    Generate AI response using multi-provider failover system.
+    Generate AI response using multi-provider failover system with timeout control.
     
     Tries providers in order: OpenRouter → Google → A4F
     Returns response from first successful provider.
+    Has overall timeout protection to prevent hanging.
     """
     attempted_providers = []
+    start_time = asyncio.get_event_loop().time()
     
     for provider_type in PROVIDER_FAILOVER_ORDER:
+        # Check if we've exceeded overall timeout
+        elapsed_time = asyncio.get_event_loop().time() - start_time
+        if elapsed_time >= AI_TOTAL_TIMEOUT:
+            logger.warning(f"Overall timeout ({AI_TOTAL_TIMEOUT}s) reached, stopping provider attempts")
+            break
+            
         provider_name = PROVIDER_CONFIGS[provider_type]["name"]
         attempted_providers.append(provider_name)
         
@@ -317,37 +383,52 @@ async def generate_ai_response(db: Session, prompt: str) -> str:
             logger.info(f"Skipping {provider_name}: No API key configured")
             continue
             
-        logger.info(f"Attempting AI request with {provider_name}")
+        logger.info(f"Attempting AI request with {provider_name} (elapsed: {elapsed_time:.1f}s)")
         
-        # Call the appropriate provider
+        # Call the appropriate provider with timeout protection
         try:
-            if provider_type == APIKeyType.OPENROUTER:
-                response, status = await call_openrouter_ai(api_key, prompt)
-            elif provider_type == APIKeyType.GOOGLE:
-                response, status = await call_google_ai(api_key, prompt)
-            elif provider_type == APIKeyType.A4F:
-                response, status = await call_a4f_ai(api_key, prompt)
-            else:
-                logger.warning(f"Unknown provider type: {provider_type}")
+            remaining_time = AI_TOTAL_TIMEOUT - elapsed_time
+            provider_timeout = min(AI_PROVIDER_TIMEOUT, remaining_time)
+            
+            if provider_timeout <= 0:
+                logger.warning(f"No time remaining for {provider_name}, skipping")
                 continue
+                
+            async def call_provider():
+                if provider_type == APIKeyType.OPENROUTER:
+                    return await call_openrouter_ai(api_key, prompt)
+                elif provider_type == APIKeyType.GOOGLE:
+                    return await call_google_ai(api_key, prompt)
+                elif provider_type == APIKeyType.A4F:
+                    return await call_a4f_ai(api_key, prompt)
+                else:
+                    logger.warning(f"Unknown provider type: {provider_type}")
+                    return "", AIProviderStatus.FAILED
+            
+            # Use asyncio.wait_for for additional timeout protection
+            response, status = await asyncio.wait_for(call_provider(), timeout=provider_timeout)
                 
             # If successful, return the response
             if status == AIProviderStatus.SUCCESS and response.strip():
-                logger.info(f"Successfully got AI response from {provider_name}")
+                logger.info(f"Successfully got AI response from {provider_name} (total time: {asyncio.get_event_loop().time() - start_time:.1f}s)")
                 return response
             else:
                 logger.warning(f"{provider_name} failed or returned empty response")
                 
+        except asyncio.TimeoutError:
+            logger.warning(f"{provider_name} timed out after {provider_timeout:.1f}s")
+            continue
         except Exception as e:
             logger.error(f"Unexpected error with {provider_name}: {e}")
             continue
     
     # If we get here, all providers failed
-    error_msg = f"All AI providers failed. Attempted: {', '.join(attempted_providers)}"
+    total_time = asyncio.get_event_loop().time() - start_time
+    error_msg = f"All AI providers failed after {total_time:.1f}s. Attempted: {', '.join(attempted_providers)}"
     logger.error(error_msg)
     raise HTTPException(
         status_code=503,
-        detail="AI services are currently unavailable. Please ensure API keys are configured and try again later."
+        detail="AI services are currently unavailable. This may be due to high demand or temporary service issues. Please try again in a few moments."
     )
 
 async def get_user_performance_data(db: Session, user_id: int) -> List[PerformanceDataPoint]:
@@ -475,52 +556,35 @@ async def analyze_trends(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            # Parse AI response
-            parsed_response = json.loads(ai_response)
-            
-            # Convert to response format
-            insights = []
-            for insight in parsed_response.get("insights", []):
-                insights.append(AITrendInsight(
-                    type=insight.get("type", "insight"),
-                    title=insight.get("title", "AI Insight"),
-                    content=insight.get("content", ""),
-                    confidence=insight.get("confidence", 0.7),
-                    timestamp=datetime.now().isoformat()
-                ))
-            
-            predictions = []
-            for pred in parsed_response.get("predictions", []):
-                predictions.append(PerformanceDataPoint(
-                    date=pred.get("date", datetime.now().isoformat()),
-                    score=pred.get("score", 0),
-                    topic="Prediction",
-                    difficulty=5
-                ))
-            
-            return TrendAnalysisResponse(
-                insights=insights,
-                trendData=performance_data,
-                predictions=predictions,
-                recommendations=parsed_response.get("recommendations", [])
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback if AI doesn't return valid JSON
-            return TrendAnalysisResponse(
-                insights=[
-                    AITrendInsight(
-                        type="insight",
-                        title="AI Analysis Complete",
-                        content=ai_response[:500] + "..." if len(ai_response) > 500 else ai_response,
-                        confidence=0.7,
-                        timestamp=datetime.now().isoformat()
-                    )
-                ],
-                trendData=performance_data,
-                recommendations=["Continue practicing regularly", "Focus on weaker topic areas"]
-            )
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        # Convert to response format
+        insights = []
+        for insight in parsed_response.get("insights", []):
+            insights.append(AITrendInsight(
+                type=insight.get("type", "insight"),
+                title=insight.get("title", "AI Insight"),
+                content=insight.get("content", ""),
+                confidence=insight.get("confidence", 0.7),
+                timestamp=datetime.now().isoformat()
+            ))
+        
+        predictions = []
+        for pred in parsed_response.get("predictions", []):
+            predictions.append(PerformanceDataPoint(
+                date=pred.get("date", datetime.now().isoformat()),
+                score=pred.get("score", 0),
+                topic="Prediction",
+                difficulty=5
+            ))
+        
+        return TrendAnalysisResponse(
+            insights=insights,
+            trendData=performance_data,
+            predictions=predictions,
+            recommendations=parsed_response.get("recommendations", [])
+        )
         
     except HTTPException:
         raise
@@ -585,42 +649,25 @@ async def get_performance_insights(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            parsed_response = json.loads(ai_response)
-            
-            insights = []
-            for insight in parsed_response.get("insights", []):
-                insights.append(AITrendInsight(
-                    type=insight.get("type", "insight"),
-                    title=insight.get("title", "Performance Insight"),
-                    content=insight.get("content", ""),
-                    confidence=insight.get("confidence", 0.7),
-                    timestamp=datetime.now().isoformat()
-                ))
-            
-            return PerformanceInsightsResponse(
-                insights=insights,
-                strengths=parsed_response.get("strengths", []),
-                weaknesses=parsed_response.get("weaknesses", []),
-                recommendations=parsed_response.get("recommendations", [])
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback response
-            return PerformanceInsightsResponse(
-                insights=[
-                    AITrendInsight(
-                        type="insight",
-                        title="Performance Analysis",
-                        content=ai_response[:500] + "..." if len(ai_response) > 500 else ai_response,
-                        confidence=0.7,
-                        timestamp=datetime.now().isoformat()
-                    )
-                ],
-                strengths=["Shows consistent effort"],
-                weaknesses=["Could benefit from focused practice"],
-                recommendations=["Continue regular practice", "Focus on challenging topics"]
-            )
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        insights = []
+        for insight in parsed_response.get("insights", []):
+            insights.append(AITrendInsight(
+                type=insight.get("type", "insight"),
+                title=insight.get("title", "Performance Insight"),
+                content=insight.get("content", ""),
+                confidence=insight.get("confidence", 0.7),
+                timestamp=datetime.now().isoformat()
+            ))
+        
+        return PerformanceInsightsResponse(
+            insights=insights,
+            strengths=parsed_response.get("strengths", ["Shows consistent effort"]),
+            weaknesses=parsed_response.get("weaknesses", ["Could benefit from focused practice"]),
+            recommendations=parsed_response.get("recommendations", ["Continue regular practice", "Focus on challenging topics"])
+        )
         
     except HTTPException:
         raise
@@ -679,30 +726,22 @@ async def get_question_recommendations(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            parsed_response = json.loads(ai_response)
-            
-            return QuestionRecommendationsResponse(
-                recommendations=parsed_response.get("recommendations", []),
-                reasoning=parsed_response.get("reasoning", []),
-                studyPlan=parsed_response.get("studyPlan", [])
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback recommendations
-            return QuestionRecommendationsResponse(
-                recommendations=[
-                    {
-                        "topic": "Mixed Practice",
-                        "difficulty": "Medium",
-                        "reason": "Balanced practice across all areas",
-                        "priority": 5,
-                        "estimatedTime": "30 minutes"
-                    }
-                ],
-                reasoning=["AI analysis suggests mixed practice would be beneficial"],
-                studyPlan=["Start with weaker topics", "Progress to stronger areas", "Regular review sessions"]
-            )
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        return QuestionRecommendationsResponse(
+            recommendations=parsed_response.get("recommendations", [
+                {
+                    "topic": "Mixed Practice",
+                    "difficulty": "Medium",
+                    "reason": "Balanced practice across all areas",
+                    "priority": 5,
+                    "estimatedTime": "30 minutes"
+                }
+            ]),
+            reasoning=parsed_response.get("reasoning", ["AI analysis suggests mixed practice would be beneficial"]),
+            studyPlan=parsed_response.get("studyPlan", ["Start with weaker topics", "Progress to stronger areas", "Regular review sessions"])
+        )
         
     except HTTPException:
         raise
@@ -774,32 +813,26 @@ async def get_weakness_heatmap(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            parsed_response = json.loads(ai_response)
-            
-            insights = []
-            for insight in parsed_response.get("insights", []):
-                insights.append(AITrendInsight(
-                    type=insight.get("type", "insight"),
-                    title=insight.get("title", "Weakness Pattern"),
-                    content=insight.get("content", ""),
-                    confidence=insight.get("confidence", 0.7),
-                    timestamp=datetime.now().isoformat()
-                ))
-            
-            return WeaknessHeatmapResponse(
-                heatmapData=parsed_response.get("heatmapData", []),
-                insights=insights,
-                recommendations=parsed_response.get("recommendations", [])
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback heatmap data
-            fallback_data = []
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        insights = []
+        for insight in parsed_response.get("insights", []):
+            insights.append(AITrendInsight(
+                type=insight.get("type", "insight"),
+                title=insight.get("title", "Weakness Pattern"),
+                content=insight.get("content", ""),
+                confidence=insight.get("confidence", 0.7),
+                timestamp=datetime.now().isoformat()
+            ))
+        
+        # Create fallback heatmap data if needed
+        heatmap_data = parsed_response.get("heatmapData", [])
+        if not heatmap_data and performance_data:
             for data_point in performance_data:
                 if data_point.topic and data_point.topic != "Overall":
                     weakness_score = max(0, 1.0 - (data_point.score / 100))
-                    fallback_data.append({
+                    heatmap_data.append({
                         "topic": data_point.topic,
                         "weakness_score": weakness_score,
                         "area": data_point.topic,
@@ -807,20 +840,20 @@ async def get_weakness_heatmap(
                         "avg_accuracy": data_point.score,
                         "time_efficiency": "fair"
                     })
-            
-            return WeaknessHeatmapResponse(
-                heatmapData=fallback_data,
-                insights=[
-                    AITrendInsight(
-                        type="insight",
-                        title="Weakness Analysis",
-                        content="Analysis completed based on available performance data",
-                        confidence=0.6,
-                        timestamp=datetime.now().isoformat()
-                    )
-                ],
-                recommendations=["Focus on areas with lower accuracy", "Practice time management"]
-            )
+        
+        return WeaknessHeatmapResponse(
+            heatmapData=heatmap_data,
+            insights=insights if insights else [
+                AITrendInsight(
+                    type="insight",
+                    title="Weakness Analysis",
+                    content="Analysis completed based on available performance data",
+                    confidence=0.6,
+                    timestamp=datetime.now().isoformat()
+                )
+            ],
+            recommendations=parsed_response.get("recommendations", ["Focus on areas with lower accuracy", "Practice time management"])
+        )
         
     except HTTPException:
         raise
@@ -889,20 +922,13 @@ async def generate_study_plan(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            parsed_response = json.loads(ai_response)
-            
-            return StudyPlanResponse(
-                plan=parsed_response.get("plan", []),
-                milestones=parsed_response.get("milestones", []),
-                recommendations=parsed_response.get("recommendations", []),
-                estimatedOutcome=parsed_response.get("estimatedOutcome")
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback study plan
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        # Create fallback plan if needed
+        plan = parsed_response.get("plan", [])
+        if not plan:
             weeks = min(request.targetDuration, 12)  # Cap at 12 weeks for fallback
-            plan = []
             for week in range(1, weeks + 1):
                 plan.append({
                     "week": week,
@@ -911,10 +937,13 @@ async def generate_study_plan(
                     "timeAllocation": {"study": request.timeAvailable * 0.7, "practice": request.timeAvailable * 0.3},
                     "goals": [f"Complete Week {week} objectives"]
                 })
-            
+        
+        milestones = parsed_response.get("milestones", [])
+        if not milestones:
+            weeks = len(plan)
             milestones = [
                 {
-                    "week": weeks // 2,
+                    "week": weeks // 2 if weeks > 2 else 1,
                     "description": "Mid-point assessment",
                     "assessment": "Take practice test",
                     "criteria": "Show improvement from baseline"
@@ -926,13 +955,13 @@ async def generate_study_plan(
                     "criteria": "Meet target performance level"
                 }
             ]
-            
-            return StudyPlanResponse(
-                plan=plan,
-                milestones=milestones,
-                recommendations=["Follow the weekly schedule", "Track progress regularly", "Adjust based on performance"],
-                estimatedOutcome="Gradual improvement in understanding and test performance"
-            )
+        
+        return StudyPlanResponse(
+            plan=plan,
+            milestones=milestones,
+            recommendations=parsed_response.get("recommendations", ["Follow the weekly schedule", "Track progress regularly", "Adjust based on performance"]),
+            estimatedOutcome=parsed_response.get("estimatedOutcome", "Gradual improvement in understanding and test performance")
+        )
         
     except HTTPException:
         raise
@@ -986,38 +1015,30 @@ async def get_motivation_boost(
         
         ai_response = await generate_ai_response(db, prompt)
         
-        try:
-            parsed_response = json.loads(ai_response)
+        # Use robust JSON extraction
+        parsed_response = extract_json_from_response(ai_response)
+        
+        # Create fallback motivational content if needed
+        achievements = parsed_response.get("achievements", ["Completed practice sessions", "Showed consistency in studying"])
+        if performance_data and not achievements:
+            total_questions = sum(p.questionCount or 0 for p in performance_data)
+            if total_questions > 0:
+                achievements.append(f"Answered {total_questions} questions")
             
-            return MotivationBoostResponse(
-                motivationalMessage=parsed_response.get("motivationalMessage", "Keep up the great work! Every step forward is progress."),
-                achievements=parsed_response.get("achievements", []),
-                nextGoals=parsed_response.get("nextGoals", []),
-                encouragement=parsed_response.get("encouragement", [])
-            )
-            
-        except json.JSONDecodeError:
-            # Fallback motivational content
-            achievements = ["Completed practice sessions", "Showed consistency in studying"]
-            if performance_data:
-                total_questions = sum(p.questionCount or 0 for p in performance_data)
-                if total_questions > 0:
-                    achievements.append(f"Answered {total_questions} questions")
-                
-                avg_score = sum(p.score for p in performance_data) / len(performance_data)
-                if avg_score > 70:
-                    achievements.append("Maintaining good performance levels")
-            
-            return MotivationBoostResponse(
-                motivationalMessage="Your dedication to learning is commendable! Every question you practice brings you closer to your goals.",
-                achievements=achievements,
-                nextGoals=["Continue regular practice", "Focus on challenging areas", "Set weekly targets"],
-                encouragement=[
-                    "Progress may seem slow, but it's happening every day",
-                    "Your effort and consistency will pay off",
-                    "Believe in your ability to succeed"
-                ]
-            )
+            avg_score = sum(p.score for p in performance_data) / len(performance_data)
+            if avg_score > 70:
+                achievements.append("Maintaining good performance levels")
+        
+        return MotivationBoostResponse(
+            motivationalMessage=parsed_response.get("motivationalMessage", "Keep up the great work! Every step forward is progress."),
+            achievements=achievements,
+            nextGoals=parsed_response.get("nextGoals", ["Continue regular practice", "Focus on challenging areas", "Set weekly targets"]),
+            encouragement=parsed_response.get("encouragement", [
+                "Progress may seem slow, but it's happening every day",
+                "Your effort and consistency will pay off",
+                "Believe in your ability to succeed"
+            ])
+        )
         
     except HTTPException:
         raise

@@ -32,6 +32,7 @@ export interface TrendAnalysisResponse {
   trendData: PerformanceDataPoint[];
   predictions?: PerformanceDataPoint[];
   recommendations: string[];
+  fallbackProvider?: string; // Indicates which provider was used if fallback occurred
 }
 
 class AIAnalyticsService {
@@ -40,21 +41,91 @@ class AIAnalyticsService {
   private readonly A4F_ENDPOINT = 'https://api.a4f.co/v1/chat/completions';
 
   /**
-   * Analyzes performance trends using AI
+   * Analyzes performance trends using AI with multi-provider fallback system:
+   * 1. Try backend first (existing implementation)
+   * 2. If backend fails, try Google AI directly
+   * 3. If Google fails, try OpenRouter
+   * 4. If OpenRouter fails, try A4F as final fallback
    */
   async analyzeTrends(request: TrendAnalysisRequest): Promise<TrendAnalysisResponse> {
+    let lastError: Error | null = null;
+
     try {
-      // Call backend AI endpoint using the authenticated api instance
+      // Step 1: Try backend AI service first
+      console.log('🔄 Step 1: Trying backend AI service...');
       const response = await api.post('/ai/analyze-trends', {
         timeframe: request.timeframe,
         analysisType: request.analysisType,
         performanceData: request.performanceData
       });
 
+      console.log('✅ Backend AI service successful');
       return response.data;
-    } catch (error) {
-      console.error('AI trend analysis failed:', error);
-      throw new Error(`Trend analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    } catch (backendError) {
+      console.warn('⚠️ Backend AI service failed, trying fallbacks...', backendError);
+      lastError = backendError instanceof Error ? backendError : new Error('Backend failed');
+
+      // Step 2: Try Google AI directly if backend fails
+      try {
+        console.log('🔄 Step 2: Trying Google AI directly...');
+        const googleResult = await apiKeyService.getApiKey({
+          keyType: 'google' as ApiKeyType,
+          enableFallback: false
+        });
+
+        if (googleResult.success && googleResult.apiKey) {
+          const result = await this.analyzeWithGoogle(request, googleResult.apiKey);
+          result.fallbackProvider = 'Google AI (direct)';
+          console.log('✅ Google AI direct call successful');
+          return result;
+        }
+      } catch (googleError) {
+        console.warn('⚠️ Google AI direct call failed, trying OpenRouter...', googleError);
+        lastError = googleError instanceof Error ? googleError : new Error('Google AI failed');
+      }
+
+      // Step 3: Try OpenRouter if Google fails
+      try {
+        console.log('🔄 Step 3: Trying OpenRouter...');
+        const openrouterResult = await apiKeyService.getApiKey({
+          keyType: 'openrouter' as ApiKeyType,
+          enableFallback: false
+        });
+
+        if (openrouterResult.success && openrouterResult.apiKey) {
+          const result = await this.analyzeWithOpenRouter(request, openrouterResult.apiKey);
+          result.fallbackProvider = 'OpenRouter (direct)';
+          console.log('✅ OpenRouter direct call successful');
+          return result;
+        }
+      } catch (openrouterError) {
+        console.warn('⚠️ OpenRouter direct call failed, trying A4F...', openrouterError);
+        lastError = openrouterError instanceof Error ? openrouterError : new Error('OpenRouter failed');
+      }
+
+      // Step 4: Try A4F as final fallback
+      try {
+        console.log('🔄 Step 4: Trying A4F as final fallback...');
+        const a4fResult = await apiKeyService.getApiKey({
+          keyType: 'a4f' as ApiKeyType,
+          enableFallback: false
+        });
+
+        if (a4fResult.success && a4fResult.apiKey) {
+          const result = await this.analyzeWithA4F(request, a4fResult.apiKey);
+          result.fallbackProvider = 'A4F (direct)';
+          console.log('✅ A4F direct call successful');
+          return result;
+        }
+      } catch (a4fError) {
+        console.error('❌ A4F direct call failed - all providers exhausted', a4fError);
+        lastError = a4fError instanceof Error ? a4fError : new Error('A4F failed');
+      }
+
+      // All providers failed
+      console.error('❌ All AI providers failed:', lastError);
+      throw new Error(`All AI providers failed. Last error: ${lastError?.message || 'Unknown error'}. Tried: Backend → Google AI → OpenRouter → A4F`);
     }
   }
 
@@ -98,30 +169,62 @@ class AIAnalyticsService {
   }
 
   /**
-   * Analyze trends using Google AI (Gemini)
+   * Analyze trends using Google AI (Gemini) with timeout and error handling
    */
   private async analyzeWithGoogle(request: TrendAnalysisRequest, apiKey: string): Promise<TrendAnalysisResponse> {
     const prompt = this.buildAnalysisPrompt(request);
 
-    const response = await fetch(`${this.GOOGLE_AI_ENDPOINT}?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      })
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google AI API error: ${response.status} - ${errorText}`);
+    try {
+      console.log('🔄 Google AI request starting...');
+      
+      const requestBody = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { 
+          temperature: 0.7, 
+          maxOutputTokens: 2000,
+          candidateCount: 1
+        }
+      };
+      
+      console.log('🔍 Google AI request body:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(`${this.GOOGLE_AI_ENDPOINT}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'CIL-CBT-App/1.0'
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      
+      console.log('🔍 Google AI response status:', response.status);
+      console.log('🔍 Google AI response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Google AI API error response:', errorText);
+        throw new Error(`Google AI API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Google AI response received:', JSON.stringify(data, null, 2));
+      
+      return this.parseGoogleResponse(data, request);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('❌ Google AI request failed:', error);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Google AI request timed out after 30 seconds');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    return this.parseGoogleResponse(data, request);
   }
 
   /**
@@ -165,43 +268,66 @@ class AIAnalyticsService {
   }
 
   /**
-   * Analyze trends using A4F API with Google Gemini 2.5 Flash
+   * Analyze trends using A4F API
    */
   private async analyzeWithA4F(request: TrendAnalysisRequest, apiKey: string): Promise<TrendAnalysisResponse> {
     const prompt = this.buildAnalysisPrompt(request);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch(this.A4F_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'CIL CBT Performance Analytics'
-      },
-      body: JSON.stringify({
+    try {
+      console.log('🔄 A4F API request starting...');
+      
+      const requestBody = {
         model: 'google/gemini-2.5-flash',
         messages: [
-          {
-            role: 'system',
-            content: 'You are an AI performance analyst for educational assessments. Provide detailed, actionable insights about student performance trends.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
+          { role: 'system', content: 'You are an AI performance analyst for educational assessments. Provide detailed, actionable insights.' },
+          { role: 'user', content: prompt }
         ],
         temperature: 0.7,
-        max_tokens: 1000
-      })
-    });
+        max_tokens: 2000,
+        stream: false
+      };
+      
+      console.log('🔍 A4F request body:', JSON.stringify(requestBody, null, 2));
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`A4F API error: ${response.status} - ${errorText}`);
+      const response = await fetch(this.A4F_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': window.location.origin,
+          'User-Agent': 'CIL-CBT-App/1.0',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      
+      console.log('🔍 A4F response status:', response.status);
+      console.log('🔍 A4F response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ A4F API error response:', errorText);
+        throw new Error(`A4F API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ A4F API response received:', JSON.stringify(data, null, 2));
+      
+      return this.parseA4FResponse(data, request);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('❌ A4F API request failed:', error);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('A4F request timed out after 30 seconds');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    return this.parseA4FResponse(data, request);
   }
 
   /**

@@ -78,6 +78,82 @@ export const PerformanceDashboard: React.FC = () => {
     setTabValue(newValue);
   };
 
+  // Transform dashboard data into comprehensive AI-ready performance data
+  const getAIPerformanceData = () => {
+    if (!data) return [];
+    
+    const performanceData = [];
+    
+    // Add trend data points (accuracy over time)
+    if (data.trends?.accuracyTrend) {
+      performanceData.push(...data.trends.accuracyTrend.map(point => ({
+        date: point.date,
+        score: point.value,
+        topic: 'Overall Performance',
+        difficulty: 5,
+        timeSpent: 0,
+        questionCount: 0
+      })));
+    }
+    
+    // Add topic performance data
+    if (data.topicPerformance) {
+      performanceData.push(...data.topicPerformance.map(topic => ({
+        date: new Date().toISOString().split('T')[0],
+        score: topic.accuracyPercentage,
+        topic: topic.topic,
+        difficulty: 5,
+        timeSpent: topic.averageResponseTimeSeconds || 0,
+        questionCount: topic.totalQuestions
+      })));
+    }
+    
+    // Add difficulty-based data points
+    if (data.difficultyMetrics) {
+      const currentDate = new Date().toISOString().split('T')[0];
+      performanceData.push(
+        {
+          date: currentDate,
+          score: data.difficultyMetrics.easy.accuracy,
+          topic: 'Easy Questions',
+          difficulty: 2,
+          timeSpent: 0,
+          questionCount: data.difficultyMetrics.easy.questionsCount
+        },
+        {
+          date: currentDate,
+          score: data.difficultyMetrics.medium.accuracy,
+          topic: 'Medium Questions',
+          difficulty: 5,
+          timeSpent: 0,
+          questionCount: data.difficultyMetrics.medium.questionsCount
+        },
+        {
+          date: currentDate,
+          score: data.difficultyMetrics.hard.accuracy,
+          topic: 'Hard Questions',
+          difficulty: 8,
+          timeSpent: 0,
+          questionCount: data.difficultyMetrics.hard.questionsCount
+        }
+      );
+    }
+    
+    // Add overall metrics as a data point
+    if (data.metrics) {
+      performanceData.push({
+        date: new Date().toISOString().split('T')[0],
+        score: data.metrics.averageScorePercentage,
+        topic: 'Overall Summary',
+        difficulty: 5,
+        timeSpent: data.metrics.averageResponseTimeSeconds,
+        questionCount: data.metrics.totalQuestionsAttempted
+      });
+    }
+    
+    return performanceData;
+  };
+
   // Show authentication check while user loads
   if (!user) {
     return (
@@ -376,42 +452,21 @@ export const PerformanceDashboard: React.FC = () => {
           {/* AI Trend Analysis Tab */}
           <AITrendAnalysisTab 
             userId={user?.user_id || 0} 
-            userPerformanceData={data?.trends?.accuracyTrend?.map(point => ({
-              date: point.date,
-              score: point.value,
-              topic: 'General',
-              difficulty: 5,
-              timeSpent: 0,
-              questionCount: 0
-            })) || []}
+            userPerformanceData={getAIPerformanceData()}
             onRetry={refetch}
           />
           
           {/* AI Performance Insights Tab */}
           <AIPerformanceInsightsTab 
             userId={user?.user_id || 0} 
-            userPerformanceData={data?.topicPerformance?.map(topic => ({
-              date: new Date().toISOString().split('T')[0],
-              score: topic.accuracyPercentage,
-              topic: topic.topic,
-              difficulty: 5,
-              timeSpent: 0,
-              questionCount: topic.totalQuestions
-            })) || []}
+            userPerformanceData={getAIPerformanceData()}
             onRetry={refetch}
           />
           
           {/* AI Question Recommendations Tab */}
           <AIQuestionRecommendationsTab 
             userId={user?.user_id || 0} 
-            userPerformanceData={data?.topicPerformance?.map(topic => ({
-              date: new Date().toISOString().split('T')[0],
-              score: topic.accuracyPercentage,
-              topic: topic.topic,
-              difficulty: 5,
-              timeSpent: 0,
-              questionCount: topic.totalQuestions
-            })) || []}
+            userPerformanceData={getAIPerformanceData()}
             onRetry={refetch}
           />
         </Box>

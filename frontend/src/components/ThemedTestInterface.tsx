@@ -512,43 +512,93 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
     }
   };
 
+  // Helper function to convert original index to current display index
+  const getDisplayIndexFromOriginal = useCallback((originalIndex: number, question: Question): number => {
+    if (!Array.isArray(question.options) || question.options.length === 0) {
+      return originalIndex;
+    }
+    
+    // Find the display index of the option that has this original index
+    for (let i = 0; i < question.options.length; i++) {
+      const option = question.options[i];
+      if (typeof option === 'object' && 'originalIndex' in option) {
+        if ((option as any).originalIndex === originalIndex) {
+          return i;
+        }
+      } else if (i === originalIndex) {
+        // Options weren't shuffled, so original index equals display index
+        return originalIndex;
+      }
+    }
+    
+    // Fallback to original index if not found
+    return originalIndex;
+  }, []);
+
+  // Helper function to convert display index to original index  
+  const getOriginalIndexFromDisplay = useCallback((displayIndex: number, question: Question): number => {
+    if (!Array.isArray(question.options) || question.options.length === 0) {
+      return displayIndex;
+    }
+    
+    const option = question.options[displayIndex];
+    if (typeof option === 'object' && 'originalIndex' in option) {
+      return (option as any).originalIndex;
+    }
+    
+    // Options weren't shuffled, so display index equals original index
+    return displayIndex;
+  }, []);
+
+  // Helper function to manage review state properly
+  const updateReviewState = useCallback((questionIndex: number, hasAnswer: boolean, forceMarkReview?: boolean) => {
+    setMarkedForReview(prev => {
+      const newSet = new Set(prev);
+      
+      if (forceMarkReview) {
+        // Explicitly mark for review
+        newSet.add(questionIndex);
+      } else if (hasAnswer) {
+        // If question has an answer, remove from review (user resolved it)
+        newSet.delete(questionIndex);
+      }
+      
+      return newSet;
+    });
+  }, []);
+
   // Handle answer selection
   const handleAnswerChange = useCallback(async (optionIndex: string) => {
     if (!currentShuffledQuestion) return;
     
     const questionKey = `${currentShuffledQuestion.question_id}-${currentQuestionIndex}`;
+    const displayIndex = parseInt(optionIndex);
+    
+    // Convert display index to original index for storage
+    const originalIndex = getOriginalIndexFromDisplay(displayIndex, currentShuffledQuestion);
+    
+    // Store the ORIGINAL index, not the display index
     setAnswers(prev => ({
       ...prev,
-      [questionKey]: optionIndex
+      [questionKey]: originalIndex.toString()
     }));
 
     // Mark user activity
     markActivity();
 
+    // Update review state - automatically remove from review when answered
+    updateReviewState(currentQuestionIndex, true, false);
+
     // Auto-save answer
     try {
       setIsSavingAnswer(true);
       
-      // Get the original option index for backend submission
-      // This is critical for correct answer validation when options are shuffled
-      let submissionIndex = parseInt(optionIndex);
-      
-      // If options were shuffled, we need to get the original index
-      if (Array.isArray(currentShuffledQuestion.options) && currentShuffledQuestion.options.length > 0) {
-        const selectedOptionData = currentShuffledQuestion.options[submissionIndex];
-        
-        // Check if the option has originalIndex property (from shuffling)
-        if (selectedOptionData && typeof selectedOptionData === 'object' && 'originalIndex' in selectedOptionData) {
-          submissionIndex = (selectedOptionData as any).originalIndex;
-          console.log(`Mock/Practice Test: Converting displayed index ${optionIndex} to original index ${submissionIndex} for question ${currentShuffledQuestion.question_id}`);
-        }
-      }
-      
       const submission: AnswerSubmission = {
         question_id: currentShuffledQuestion.question_id,
-        selected_option_index: submissionIndex,
+        selected_option_index: originalIndex, // Already the original index
         time_taken_seconds: Math.round((testDuration * 60 - timeLeft)),
-        is_marked_for_review: markedForReview.has(currentQuestionIndex)
+        // Send false for review since we auto-remove answered questions from review
+        is_marked_for_review: false
       };
       
       await testsAPI.submitAnswer(attemptId, submission);
@@ -557,7 +607,7 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
     } finally {
       setIsSavingAnswer(false);
     }
-  }, [currentShuffledQuestion, currentQuestionIndex, attemptId, testDuration, timeLeft, markedForReview, markActivity]);
+  }, [currentShuffledQuestion, currentQuestionIndex, attemptId, testDuration, timeLeft, markActivity, updateReviewState, getOriginalIndexFromDisplay]);
 
   // Navigation functions
   const goToNextQuestion = () => {
@@ -591,15 +641,25 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
       delete newAnswers[questionKey];
       return newAnswers;
     });
+    
+    // When clearing answer, check if question should go back to review state
+    // Only if it was previously marked and no longer has an answer
+    const wasMarkedForReview = markedForReview.has(currentQuestionIndex);
+    if (wasMarkedForReview) {
+      // Keep it marked for review since user explicitly marked it and now cleared the answer
+      updateReviewState(currentQuestionIndex, false, true);
+    }
   };
 
   const handleSaveMarkReview = () => {
-    setMarkedForReview(prev => new Set([...Array.from(prev), currentQuestionIndex]));
+    // Explicitly mark for review regardless of answer status
+    updateReviewState(currentQuestionIndex, false, true);
     goToNextQuestion();
   };
 
   const handleMarkReviewNext = () => {
-    setMarkedForReview(prev => new Set([...Array.from(prev), currentQuestionIndex]));
+    // Explicitly mark for review regardless of answer status  
+    updateReviewState(currentQuestionIndex, false, true);
     goToNextQuestion();
   };
 
@@ -640,7 +700,11 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
     );
   }
 
-  const currentAnswer = answers[`${currentShuffledQuestion.question_id}-${currentQuestionIndex}`] || '';
+  // Get the stored answer (original index) and convert to display index for UI
+  const storedOriginalIndex = answers[`${currentShuffledQuestion.question_id}-${currentQuestionIndex}`];
+  const currentAnswer = storedOriginalIndex 
+    ? getDisplayIndexFromOriginal(parseInt(storedOriginalIndex), currentShuffledQuestion).toString()
+    : '';
 
   return (
     <TestContainer>
@@ -765,11 +829,24 @@ export const ThemedTestInterface: React.FC<ThemedTestInterfaceProps> = ({
           <Typography>
             Are you sure you want to submit your test? You won't be able to make any changes after submission.
           </Typography>
-          {markedForReview.size > 0 && (
-            <Typography sx={{ mt: 1, color: 'orange' }}>
-              Note: You have {markedForReview.size} question(s) marked for review.
-            </Typography>
-          )}
+          {(() => {
+            // Calculate questions that are marked for review AND don't have answers
+            const unresolvedReviewQuestions = Array.from(markedForReview).filter(questionIndex => {
+              const question = displayedQuestions[questionIndex];
+              if (!question) return false;
+              const questionKey = `${question.question_id}-${questionIndex}`;
+              return !answers[questionKey]; // No answer provided
+            });
+            
+            if (unresolvedReviewQuestions.length > 0) {
+              return (
+                <Typography sx={{ mt: 1, color: 'orange' }}>
+                  Note: You have {unresolvedReviewQuestions.length} question(s) marked for review that are still unanswered.
+                </Typography>
+              );
+            }
+            return null;
+          })()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowConfirmSubmit(false)}>Cancel</Button>
