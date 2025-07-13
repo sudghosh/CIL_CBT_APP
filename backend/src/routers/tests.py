@@ -1124,7 +1124,7 @@ async def submit_answer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to submit answer"
         )
-@router.post("/finish/{attempt_id}")
+@router.post("/finish/{attempt_id}", response_model=TestAttemptResponse)
 async def finish_attempt(
     attempt_id: int,
     db: Session = Depends(get_db),
@@ -1424,8 +1424,14 @@ async def get_next_adaptive_question(
         
         # Log start of request processing
         logger.info(f"Processing next_question request for attempt_id={attempt_id}")
-        # Parse the request body
-        body = await request.json()
+        
+        # Parse the request body (handle empty body)
+        try:
+            body = await request.json()
+        except Exception as e:
+            logger.info(f"No JSON body provided or failed to parse: {e}")
+            body = {}
+        
         question_id = body.get("question_id")
         selected_option_id = body.get("selected_option_id")
         time_taken_seconds = body.get("time_taken_seconds", 0)

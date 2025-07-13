@@ -1,7 +1,7 @@
 import pytest
 from fastapi import status
 from sqlalchemy.orm import Session
-from ..src.database.models import AllowedEmail
+from src.database.models import AllowedEmail
 
 @pytest.mark.auth
 @pytest.mark.admin
@@ -32,7 +32,7 @@ class TestEmailWhitelisting:
         assert db_entry is not None
         assert db_entry.email == test_email
 
-    def test_whitelist_already_whitelisted(self, admin_client, test_db: Session):
+    def test_whitelist_already_whitelisted(self, admin_client, admin_user, test_db: Session):
         """Whitelisting an already whitelisted email should be successful"""
         test_email = "already.whitelisted@example.com"
 
@@ -41,7 +41,7 @@ class TestEmailWhitelisting:
         if not existing:
             allowed_email = AllowedEmail(
                 email=test_email,
-                added_by_admin_id=1  # Admin user id
+                added_by_admin_id=admin_user["user_id"]  # Use actual admin user id
             )
             test_db.add(allowed_email)
             test_db.commit()

@@ -4,13 +4,13 @@ from unittest.mock import patch
 from jose import jwt
 
 # Use local import style for backend tests
-from backend.src.database.models import User, AllowedEmail
-from backend.src.auth.auth import ***REMOVED***, ALGORITHM
+from src.database.models import User, AllowedEmail
+from src.auth.auth import ***REMOVED***, ALGORITHM
 
 @pytest.fixture
 def create_test_users(db_session):
     """Create test users with different roles for authentication testing"""
-    # Create admin user
+    # Create admin user first
     admin_user = User(
         email="admin.test@example.com",
         google_id="admin-google-id-test",
@@ -19,6 +19,11 @@ def create_test_users(db_session):
         role="Admin",
         is_active=True
     )
+    
+    # Add admin user to the database and get the ID
+    db_session.add(admin_user)
+    db_session.commit()
+    db_session.refresh(admin_user)
     
     # Create regular user
     regular_user = User(
@@ -30,19 +35,20 @@ def create_test_users(db_session):
         is_active=True
     )
     
-    # Add users to the database
-    db_session.add(admin_user)
+    # Add regular user to the database
     db_session.add(regular_user)
+    db_session.commit()
+    db_session.refresh(regular_user)
     
-    # Add emails to whitelist
+    # Add emails to whitelist using the actual admin user ID
     admin_email = AllowedEmail(
         email="admin.test@example.com",
-        added_by_admin_id=1  # Assuming ID 1 exists for this test
+        added_by_admin_id=admin_user.user_id
     )
     
     regular_email = AllowedEmail(
         email="user.test@example.com",
-        added_by_admin_id=1  # Assuming ID 1 exists for this test
+        added_by_admin_id=admin_user.user_id
     )
     
     # Add whitelisted emails to database
@@ -111,13 +117,13 @@ class TestRoleBasedAuthentication:
             assert payload["sub"] == "user.test@example.com"
             assert "user_id" in payload
     
-    def test_new_user_gets_default_role(self, client, db_session):
+    def test_new_user_gets_default_role(self, client, db_session, admin_user):
         """Test that a new user gets the default 'User' role"""
         # Add email to whitelist first
         new_email = "new.user@example.com"
         allowed_email = AllowedEmail(
             email=new_email,
-            added_by_admin_id=1  # Assuming ID 1 exists for this test
+            added_by_admin_id=admin_user["user_id"]
         )
         db_session.add(allowed_email)
         db_session.commit()

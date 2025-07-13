@@ -5,13 +5,28 @@ from typing import List
 from datetime import date
 import random  # Add import for random module
 
-def create_sample_paper(db: Session) -> Paper:
+def create_sample_paper(db: Session, created_by_user_id: int = None) -> Paper:
+    # Validate that the user exists if provided
+    if created_by_user_id is not None:
+        from .models import User
+        user = db.query(User).filter(User.user_id == created_by_user_id).first()
+        if not user:
+            print(f"Warning: User with ID {created_by_user_id} not found. Setting created_by_user_id to None.")
+            created_by_user_id = None
+    
+    # Create unique paper name for tests
+    import time
+    import uuid
+    unique_suffix = str(int(time.time()))[-6:] + str(uuid.uuid4())[:8]
+    paper_name = f"CIL HR Mock Test Paper {unique_suffix}"
+    
     # Create main paper
     paper = Paper(
-        paper_name="CIL HR Mock Test Paper 1",
+        paper_name=paper_name,
         total_marks=100,
         description="Sample mock test paper for CIL HR recruitment",
-        is_active=True
+        is_active=True,
+        created_by_user_id=created_by_user_id
     )
     db.add(paper)
     db.commit()
@@ -68,7 +83,15 @@ def create_sample_paper(db: Session) -> Paper:
 
     return paper
 
-def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
+def create_sample_questions(db: Session, paper_id: int, created_by_user_id: int = None) -> List[Question]:
+    # Validate that the user exists if provided
+    if created_by_user_id is not None:
+        from .models import User
+        user = db.query(User).filter(User.user_id == created_by_user_id).first()
+        if not user:
+            print(f"Warning: User with ID {created_by_user_id} not found. Setting created_by_user_id to None.")
+            created_by_user_id = None
+    
     # Get all sections
     sections = db.query(Section).filter(Section.paper_id == paper_id).all()
     questions = []
@@ -96,7 +119,8 @@ def create_sample_questions(db: Session, paper_id: int) -> List[Question]:
                     subsection_id=subsection.subsection_id,
                     default_difficulty_level="Easy",
                     difficulty_level=chosen_difficulty,  # Use randomly chosen difficulty
-                    valid_until=date(9999, 12, 31)
+                    valid_until=date(9999, 12, 31),
+                    created_by_user_id=created_by_user_id
                 )
                 db.add(question)
                 db.commit()

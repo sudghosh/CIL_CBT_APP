@@ -1,5 +1,5 @@
 import pytest
-from backend.src.validation.test_validators import (
+from src.validation.test_validators import (
     QuestionOptionResponse,
     ExamQuestionResponse as TestQuestionResponse,
     ExamAttemptBase as TestAttemptBase,

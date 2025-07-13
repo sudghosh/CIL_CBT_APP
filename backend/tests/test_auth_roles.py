@@ -18,8 +18,8 @@ from jose import jwt
 from fastapi import status
 
 # Use the correct import style for backend tests
-from backend.src.auth.auth import ***REMOVED***, ALGORITHM
-from backend.src.database.models import User, AllowedEmail
+from src.auth.auth import ***REMOVED***, ALGORITHM
+from src.database.models import User, AllowedEmail
 
 
 def test_verify_token_includes_correct_role(client, db_session):
