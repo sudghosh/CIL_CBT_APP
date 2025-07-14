@@ -1,5 +1,14 @@
 # CIL CBT App
 
+## Production Deployment Notice
+
+**For production deployments:**
+- Use the `.env.prod` file and fill in all required secrets and production values (see comments in the file).
+- Follow the step-by-step instructions in `production_deployment_guide.md` for secure deployment, database migration, and validation.
+- Never use development or test secrets in production.
+- For details on environment variables, see the top of `.env.prod`.
+
+
 Computer-Based Testing Application for Coal India Limited HR Examinations
 
 ## Features
