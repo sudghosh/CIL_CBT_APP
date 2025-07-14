@@ -255,7 +255,7 @@ export const authAPI = {
     }),
     
   developmentLogin: () => 
-    // Call the backend dev-login endpoint to get a real ***REMOVED*** token
+    // Call the backend dev-login endpoint to get a real JWT token
     axiosWithRetry.post('/auth/dev-login', {}, {
       baseURL: API_URL,
       timeout: 8000, // 8 second timeout

@@ -16,20 +16,20 @@ load_dotenv()
 Base = declarative_base()
 
 # Get database URL from environment variable
-***REMOVED*** = os.getenv("***REMOVED***")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# For local development, use SQLite if ***REMOVED*** is not set
-if not ***REMOVED***:
-    logger.warning("***REMOVED*** not found, using SQLite for local development")
-    ***REMOVED*** = "sqlite:///./test.db"
+# For local development, use SQLite if DATABASE_URL is not set
+if not DATABASE_URL:
+    logger.warning("DATABASE_URL not found, using SQLite for local development")
+    DATABASE_URL = "sqlite:///./test.db"
     engine = create_engine(
-        ***REMOVED***,
+        DATABASE_URL,
         connect_args={"check_same_thread": False}  # Needed for SQLite
     )
 else:
     # Create engine with optimized connection pool settings for PostgreSQL
     engine = create_engine(
-        ***REMOVED***,
+        DATABASE_URL,
         poolclass=QueuePool,
         pool_size=5,
         max_overflow=10,

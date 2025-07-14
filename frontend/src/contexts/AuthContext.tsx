@@ -170,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // For all other tokens (including Google Auth ***REMOVED*** tokens), validate with backend
+      // For all other tokens (including Google Auth JWT tokens), validate with backend
       console.log('Validating token with backend API');
       const response = await authAPI.googleLogin(tokenInfo);
       console.log('Login response:', response.data);
@@ -225,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('Performing development login via backend...');
 
-      // Call the backend dev-login endpoint to get a real ***REMOVED*** token
+      // Call the backend dev-login endpoint to get a real JWT token
       const response = await authAPI.developmentLogin();
       console.log('Development login response:', response.data);
       
@@ -233,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error("No access token received from development login");
       }
       
-      // Store the real ***REMOVED*** token from backend
+      // Store the real JWT token from backend
       localStorage.setItem('token', (response.data as any).access_token);
       console.log('[DEBUG] Real dev token set in localStorage');
 

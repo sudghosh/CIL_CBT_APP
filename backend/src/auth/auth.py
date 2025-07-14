@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2AuthorizationCodeBearer
-from jose import ***REMOVED***Error, jwt
+from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 import os
@@ -11,10 +11,10 @@ from ..database.models import User, AllowedEmail
 
 load_dotenv()
 
-***REMOVED*** = os.getenv("***REMOVED***", "your-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 # Handle empty environment variable safely
-***REMOVED***_EXPIRE_MINUTES = int(os.getenv("***REMOVED***_EXPIRE_MINUTES") or "240")  # Default 4 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES") or "240")  # Default 4 hours
 
 oauth2_scheme = OAuth2AuthorizationCodeBearer(
     authorizationUrl="https://accounts.google.com/o/oauth2/v2/auth",
@@ -26,18 +26,18 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=***REMOVED***_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, ***REMOVED***, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """
-    Verify and validate a ***REMOVED*** token for authentication.
+    Verify and validate a JWT token for authentication.
     
     This function:
     1. Handles development tokens in development mode
-    2. Decodes and validates the ***REMOVED*** token
+    2. Decodes and validates the JWT token
     3. Extracts claims (email, role, user_id)
     4. Verifies the user exists in the database
     5. Ensures the user account is active
@@ -92,9 +92,9 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
             
         # Decode and validate the token
         try:
-            payload = jwt.decode(token, ***REMOVED***, algorithms=[ALGORITHM])
-        except ***REMOVED***Error as e:
-            print(f"***REMOVED*** error during token verification: {str(e)}")
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except JWTError as e:
+            print(f"JWT error during token verification: {str(e)}")
             raise credentials_exception
         
         # Extract claims from payload
@@ -109,8 +109,8 @@ def verify_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
             
         print(f"Token verification successful for email: {email}")
         
-    except ***REMOVED***Error as e:
-        print(f"***REMOVED*** error during token verification: {str(e)}")
+    except JWTError as e:
+        print(f"JWT error during token verification: {str(e)}")
         raise credentials_exception
     except Exception as e:
         print(f"Unexpected error during token verification: {str(e)}")

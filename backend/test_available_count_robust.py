@@ -24,7 +24,7 @@ BASE_URL = "http://localhost:8000"
 
 def get_token():
     """
-    Get a ***REMOVED*** token by making a direct request to the auth endpoint.
+    Get a JWT token by making a direct request to the auth endpoint.
     You may need to modify this based on your actual authentication system.
     """
     try:

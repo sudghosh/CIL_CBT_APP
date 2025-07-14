@@ -21,7 +21,7 @@ DO
 $$
 BEGIN
    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'cildb') THEN
-      CREATE USER cildb WITH ***REMOVED*** 'cildb123';
+      CREATE USER cildb WITH PASSWORD 'cildb123';
    END IF;
 END
 $$;

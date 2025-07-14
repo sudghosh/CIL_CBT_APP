@@ -82,7 +82,7 @@ def perform_migration():
         db_port = os.environ.get('POSTGRES_PORT', '5432')
         db_name = os.environ.get('POSTGRES_DB', 'cil_cbt_db')
         db_user = os.environ.get('POSTGRES_USER', 'cildb')
-        db_password = os.environ.get('***REMOVED***', 'password')
+        db_password = os.environ.get('POSTGRES_PASSWORD', 'password')
         
         db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
         logger.info(f"Connecting to database at {db_host}:{db_port}/{db_name}")

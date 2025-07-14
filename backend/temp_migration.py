@@ -2,15 +2,15 @@ from sqlalchemy import create_engine, text
 import os
 
 # Get database URL from environment in the container
-***REMOVED*** = os.environ.get('***REMOVED***')
-print(f"Using database URL: {***REMOVED***.split('@')[0].split('://')[0]}://*****@{***REMOVED***.split('@')[1]}")
+DATABASE_URL = os.environ.get('DATABASE_URL')
+print(f"Using database URL: {DATABASE_URL.split('@')[0].split('://')[0]}://*****@{DATABASE_URL.split('@')[1]}")
 
 # Run the migration
 print("Starting migration to add max_questions column to test_attempts table")
 
 try:
     # Connect to the database
-    engine = create_engine(***REMOVED***)
+    engine = create_engine(DATABASE_URL)
     
     with engine.connect() as connection:
         # Check if column exists

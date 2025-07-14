@@ -13,8 +13,8 @@ from database import Base
 from models import Question, User, UserQuestionDifficulty, Paper, Section, Subsection
 
 # Database setup
-***REMOVED*** = "sqlite:///./cil_cbt_app.db"
-engine = create_engine(***REMOVED***)
+DATABASE_URL = "sqlite:///./cil_cbt_app.db"
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def debug_get_personalized_questions():

@@ -61,10 +61,10 @@ Run the migrations to fix this issue.
 This is due to a formatting issue in the SQLAlchemy model definition for the Question class.
 The code has been fixed to properly define the relationship between Question and Paper.
 
-### 4. ***REMOVED*** Token Expiration Issues
+### 4. JWT Token Expiration Issues
 
-The system shows many "***REMOVED*** error during token verification: Signature has expired" messages.
-Consider increasing the ***REMOVED***_EXPIRE_MINUTES value in your environment configuration.
+The system shows many "JWT error during token verification: Signature has expired" messages.
+Consider increasing the ACCESS_TOKEN_EXPIRE_MINUTES value in your environment configuration.
 
 ## Verifying the Fix
 

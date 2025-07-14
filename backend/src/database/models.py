@@ -37,9 +37,9 @@ class EncryptedField(TypeDecorator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        key = os.environ.get("***REMOVED***_ENCRYPTION_KEY")
+        key = os.environ.get("API_KEY_ENCRYPTION_KEY")
         if not key:
-            raise RuntimeError("***REMOVED***_ENCRYPTION_KEY environment variable must be set.")
+            raise RuntimeError("API_KEY_ENCRYPTION_KEY environment variable must be set.")
         self.fernet = Fernet(key)
 
     def process_bind_param(self, value, dialect):

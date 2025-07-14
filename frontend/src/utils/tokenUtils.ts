@@ -23,7 +23,7 @@ export const validateToken = (token: string | null): boolean => {
   }
 
   try {
-    // Only apply ***REMOVED*** validation to tokens that look like ***REMOVED***s
+    // Only apply JWT validation to tokens that look like JWTs
     if (!token.includes('.') || token.split('.').length !== 3) {
       console.warn('Token has invalid format');
       return false;
@@ -119,7 +119,7 @@ export const getUserFromToken = () => {
     
     // Extract user info from payload
     return {
-      // Map common ***REMOVED*** fields to our user structure
+      // Map common JWT fields to our user structure
       user_id: payload.sub || payload.id,
       email: payload.email || payload.sub,
       role: payload.role || 'User',

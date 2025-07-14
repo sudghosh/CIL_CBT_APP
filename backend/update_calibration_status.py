@@ -18,7 +18,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from src.database.models import UserQuestionDifficulty
 
 # Database connection
-***REMOVED*** = "postgresql://cildb:cildb@cil_hr_postgres:5432/cil_cbt_db"
+DATABASE_URL = "postgresql://cildb:cildb@cil_hr_postgres:5432/cil_cbt_db"
 
 def update_calibration_status():
     """Update calibration status for existing user-question pairs."""
@@ -26,7 +26,7 @@ def update_calibration_status():
     print("🔄 Starting calibration status update...")
     
     # Create database connection
-    engine = create_engine(***REMOVED***)
+    engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     db = SessionLocal()

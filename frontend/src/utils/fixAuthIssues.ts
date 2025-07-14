@@ -21,7 +21,7 @@ export const safeTokenCheck = (tokenToCheck: string | null): boolean => {
     return true;
   }
   
-  // For real tokens, they need proper ***REMOVED*** validation
+  // For real tokens, they need proper JWT validation
   // This is handled by the isTokenExpired function elsewhere
   return true;
 };

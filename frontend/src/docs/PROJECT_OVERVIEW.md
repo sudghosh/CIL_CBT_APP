@@ -42,7 +42,7 @@ CIL_CBT_App is a full-stack web application designed for managing and conducting
 
 ### 3.1. Production
 - Uses Google OAuth for secure login
-- ***REMOVED*** tokens are stored in localStorage
+- JWT tokens are stored in localStorage
 - User/admin status is verified via backend API
 
 ### 3.2. Development Mode

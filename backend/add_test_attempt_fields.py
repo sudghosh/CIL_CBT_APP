@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def get_database_url():
     """Get database URL from environment variables or use default"""
     db_user = os.getenv("POSTGRES_USER", "postgres")
-    db_password = os.getenv("***REMOVED***", "postgres")
+    db_password = os.getenv("POSTGRES_PASSWORD", "postgres")
     db_host = os.getenv("POSTGRES_HOST", "postgres")
     db_port = os.getenv("POSTGRES_PORT", "5432")
     db_name = os.getenv("POSTGRES_DB", "cil_cbt_db")

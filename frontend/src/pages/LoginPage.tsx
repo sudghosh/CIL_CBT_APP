@@ -15,7 +15,7 @@ export const LoginPage: React.FC = (): JSX.Element => {
   const [googleLoadError, setGoogleLoadError] = useState<boolean>(false);
 
   // Get client ID from environment
-  const clientId = process.env.REACT_APP_***REMOVED***;
+  const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
   // Clear errors when component mounts or location changes
   useEffect(() => {

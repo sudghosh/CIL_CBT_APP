@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-***REMOVED*** = os.getenv("***REMOVED***")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
 class GoogleTokenInfo(BaseModel):
     token: str
@@ -42,14 +42,14 @@ async def google_auth_callback(token_info: GoogleTokenInfo, request: Request, db
     try:
         # Print debug information
         print(f"Received token info: {token_info}")
-        print(f"Using client ID: {***REMOVED***}")
+        print(f"Using client ID: {GOOGLE_CLIENT_ID}")
 
         # Verify the Google token
         try:
             idinfo = id_token.verify_oauth2_token(
                 token_info.token,
                 requests.Request(),
-                ***REMOVED***
+                GOOGLE_CLIENT_ID
             )
             print("Google token verified successfully.")
         except ValueError as e:
@@ -303,7 +303,7 @@ async def refresh_token(
     db: Session = Depends(get_db)
 ):
     """
-    Refresh the ***REMOVED*** token for an authenticated user
+    Refresh the JWT token for an authenticated user
     """
     try:
         # User is already verified by the verify_token dependency

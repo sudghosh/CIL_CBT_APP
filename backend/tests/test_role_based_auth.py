@@ -5,7 +5,7 @@ from jose import jwt
 
 # Use local import style for backend tests
 from src.database.models import User, AllowedEmail
-from src.auth.auth import ***REMOVED***, ALGORITHM
+from src.auth.auth import SECRET_KEY, ALGORITHM
 
 @pytest.fixture
 def create_test_users(db_session):
@@ -82,9 +82,9 @@ class TestRoleBasedAuthentication:
             assert "access_token" in response.json()
             
             # Verify token contains correct role
-            from src.auth.auth import jwt, ***REMOVED***, ALGORITHM
+            from src.auth.auth import jwt, SECRET_KEY, ALGORITHM
             token = response.json()["access_token"]
-            payload = jwt.decode(token, ***REMOVED***, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             
             assert payload["role"] == "Admin"
             assert payload["sub"] == "admin.test@example.com"
@@ -109,9 +109,9 @@ class TestRoleBasedAuthentication:
             assert "access_token" in response.json()
             
             # Verify token contains correct role
-            from src.auth.auth import jwt, ***REMOVED***, ALGORITHM
+            from src.auth.auth import jwt, SECRET_KEY, ALGORITHM
             token = response.json()["access_token"]
-            payload = jwt.decode(token, ***REMOVED***, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             
             assert payload["role"] == "User"
             assert payload["sub"] == "user.test@example.com"
@@ -145,9 +145,9 @@ class TestRoleBasedAuthentication:
             assert "access_token" in response.json()
             
             # Verify token contains correct default role
-            from src.auth.auth import jwt, ***REMOVED***, ALGORITHM
+            from src.auth.auth import jwt, SECRET_KEY, ALGORITHM
             token = response.json()["access_token"]
-            payload = jwt.decode(token, ***REMOVED***, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             
             assert payload["role"] == "User"
             assert payload["sub"] == new_email

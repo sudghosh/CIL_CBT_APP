@@ -27,7 +27,7 @@ import {
 } from "@mui/material";
 import { Add, Edit, Delete, Refresh } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
-import { ApiKey, ApiKeyForm, ***REMOVED***_TYPES } from "../types/apiKey";
+import { ApiKey, ApiKeyForm, API_KEY_TYPES } from "../types/apiKey";
 import { api } from "../services/api";
 
 async function fetchApiKeys(
@@ -279,7 +279,7 @@ export default function ApiKeyAdminPage() {
                 onChange={handleChange}
                 disabled={!!editKey}
               >
-                {***REMOVED***_TYPES.map((type) => (
+                {API_KEY_TYPES.map((type) => (
                   <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
                 ))}
               </Select>

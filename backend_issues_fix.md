@@ -4,7 +4,7 @@ This document outlines the fixes implemented for the backend issues related to a
 
 ## Problems Identified
 
-1. **Authentication Token Expiration**: ***REMOVED*** tokens were configured to expire after only 30 minutes, causing "Signature has expired" errors and 401 Unauthorized responses.
+1. **Authentication Token Expiration**: JWT tokens were configured to expire after only 30 minutes, causing "Signature has expired" errors and 401 Unauthorized responses.
 
 2. **Test Template Section Handling**: Mismatch between `section_id` from the frontend and `section_id_ref` in the database was causing the "No valid questions found for any of the requested sections" error.
 
@@ -14,7 +14,7 @@ This document outlines the fixes implemented for the backend issues related to a
 
 ### 1. Authentication Token Fix
 
-- Extended the ***REMOVED*** token expiration time from 30 minutes to 8 hours.
+- Extended the JWT token expiration time from 30 minutes to 8 hours.
 - Updated the token creation function to use the configured expiration time.
 
 ### 2. Test Template Creation Fix
@@ -64,7 +64,7 @@ If you continue experiencing issues after applying these fixes:
 
 2. Look for errors related to:
    - "No valid questions found"
-   - "***REMOVED*** error during token verification"
+   - "JWT error during token verification"
    - "Section_id_ref" issues
 
 3. Verify question validity in the database:

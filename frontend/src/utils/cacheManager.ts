@@ -52,7 +52,7 @@ export const hasAuthData = (): boolean => {
 
 /**
  * Utility to check if a token has expired
- * @param token ***REMOVED*** token to check
+ * @param token JWT token to check
  * @returns boolean - true if token has expired
  */
 export const isTokenExpired = (token: string): boolean => {
@@ -75,7 +75,7 @@ export const isTokenExpired = (token: string): boolean => {
       return false; // Already validated this token
     }
     
-    // Skip token validation for tokens that don't look like valid ***REMOVED***s
+    // Skip token validation for tokens that don't look like valid JWTs
     if (!token.includes('.') || token.split('.').length !== 3) {
       console.warn('Invalid token format detected');
       return true; // Invalid format means we treat as expired

@@ -6,7 +6,7 @@ services:
     container_name: cil_hr_postgres
     environment:
       POSTGRES_USER: cildb
-      ***REMOVED***: cildb123
+      POSTGRES_PASSWORD: cildb123
       POSTGRES_DB: cil_cbt_db
     ports:
       - '5432:5432'

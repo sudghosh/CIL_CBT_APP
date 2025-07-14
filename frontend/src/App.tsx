@@ -83,7 +83,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const App: React.FC = () => {
-  const clientId = process.env.REACT_APP_***REMOVED*** || '';
+  const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
   const [apiHealth, setApiHealth] = useState<boolean | null>(null);
   
   // Check API health on startup

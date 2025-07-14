@@ -27,7 +27,7 @@ export const ApiKeyStatusDemo: React.FC = () => {
     keyType: 'google', 
     autoFetch: true,
     enableFallback: true,
-    fallbackKey: process.env.REACT_APP_GOOGLE_***REMOVED*** 
+    fallbackKey: process.env.REACT_APP_GOOGLE_API_KEY 
   });
 
   const { 
@@ -40,7 +40,7 @@ export const ApiKeyStatusDemo: React.FC = () => {
     keyType: 'openrouter', 
     autoFetch: true,
     enableFallback: true,
-    fallbackKey: process.env.REACT_APP_OPENROUTER_***REMOVED*** 
+    fallbackKey: process.env.REACT_APP_OPENROUTER_API_KEY 
   });
 
   const renderKeyStatus = (

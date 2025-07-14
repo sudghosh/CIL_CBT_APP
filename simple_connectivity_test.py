@@ -65,7 +65,7 @@ def main():
     
     if token and frontend_ok:
         print("🎉 Basic connectivity tests passed!")
-        print(f"   Backend ***REMOVED*** token: {token[:50]}...")
+        print(f"   Backend JWT token: {token[:50]}...")
         print("   Frontend is serving the application")
         print("\n📝 Manual test steps:")
         print("   1. Open http://localhost:3000 in your browser")

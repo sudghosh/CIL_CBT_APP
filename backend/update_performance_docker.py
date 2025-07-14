@@ -13,14 +13,14 @@ from src.database.models import TestAttempt
 from src.tasks.performance_aggregator import performance_aggregation_task
 
 # Database connection - use internal Docker network
-***REMOVED*** = "postgresql://cildb:cildb123@cil_hr_postgres:5432/cil_cbt_db"
+DATABASE_URL = "postgresql://cildb:cildb123@cil_hr_postgres:5432/cil_cbt_db"
 
 async def main():
     """Update performance data for all existing test attempts"""
     print("🔄 Starting performance data update...")
     
     # Create database connection
-    engine = create_engine(***REMOVED***)
+    engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     db = SessionLocal()

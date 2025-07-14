@@ -41,7 +41,7 @@ args = parser.parse_args()
 db_password = args.db_password
 if not db_password:
     # Check environment variable
-    db_password = os.environ.get('DB_***REMOVED***')
+    db_password = os.environ.get('DB_PASSWORD')
     
     # Check password file
     if not db_password:
@@ -54,7 +54,7 @@ if not db_password:
             logger.error(f"Error reading password file: {e}")
 
 if not db_password:
-    logger.error("Database password not provided. Use --db-password, DB_***REMOVED*** environment variable, or place it in secrets/db_password.txt")
+    logger.error("Database password not provided. Use --db-password, DB_PASSWORD environment variable, or place it in secrets/db_password.txt")
     sys.exit(1)
 
 # Create database connection

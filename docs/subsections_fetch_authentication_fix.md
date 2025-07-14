@@ -14,7 +14,7 @@ This prevented the subsections dropdown from being populated, making it impossib
 
 After investigating the issue, we found that:
 
-1. The subsections endpoint (`/api/sections/{section_id}/subsections/`) requires authentication with a ***REMOVED*** token
+1. The subsections endpoint (`/api/sections/{section_id}/subsections/`) requires authentication with a JWT token
 2. The fetch request in `QuestionManagement.tsx` was using the native `fetch` API with a manually added token
 3. While the token was being added to the request headers, there was an issue with how it was being processed, resulting in a 401 Unauthorized error
 4. Other API calls in the application successfully used the `axiosWithRetry` utility, which correctly handles the authentication token

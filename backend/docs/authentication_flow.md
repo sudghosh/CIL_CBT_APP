@@ -28,7 +28,7 @@ The application uses Google OAuth for authentication. Here's the flow:
    - Updates user details like first name and last name if needed
 
 5. **Token Generation**:
-   - Creates a ***REMOVED*** token containing:
+   - Creates a JWT token containing:
      - Email address (`sub` claim)
      - User role (`role` claim)
      - User ID (`user_id` claim)
@@ -88,7 +88,7 @@ The application implements role-based access control:
    - Handles user creation and token generation
 
 2. **`src/auth/auth.py`**:
-   - Contains the ***REMOVED*** token utilities
+   - Contains the JWT token utilities
    - Implements the token verification middleware
    - Provides the admin verification helper
 
@@ -106,16 +106,16 @@ The application implements role-based access control:
    - Validates Google tokens
    - Performs email whitelisting checks
    - Manages user creation and updates
-   - Generates ***REMOVED*** tokens with role information
+   - Generates JWT tokens with role information
 
 2. **`verify_token`**:
-   - Validates ***REMOVED*** tokens
+   - Validates JWT tokens
    - Extracts user information including role and user_id
    - Verifies user existence and activity status
    - Ensures role in token matches database role
 
 3. **`create_access_token`**:
-   - Creates ***REMOVED*** tokens with appropriate claims
+   - Creates JWT tokens with appropriate claims
    - Sets expiration times
    - Includes role and user_id in the payload
 

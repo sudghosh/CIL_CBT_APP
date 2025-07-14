@@ -38,21 +38,21 @@
 1. **Backend (.env.dev)**
    ```
    POSTGRES_USER=cildb
-   ***REMOVED***=cildb123
+   POSTGRES_PASSWORD=cildb123
    POSTGRES_DB=cil_cbt_db
-   ***REMOVED***=postgresql://cildb:cildb123@postgres:5432/cil_cbt_db
-   ***REMOVED***=your-secret-key
+   DATABASE_URL=postgresql://cildb:cildb123@postgres:5432/cil_cbt_db
+   SECRET_KEY=your-secret-key
    ALGORITHM=HS256
-   ***REMOVED***_EXPIRE_MINUTES=30
-   ***REMOVED***=your-google-client-id
-   ***REMOVED***=your-google-client-secret
+   ACCESS_TOKEN_EXPIRE_MINUTES=30
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
    ```
 
 2. **Frontend (environment variables in docker-compose.dev.yml)**
    ```
    NODE_ENV=development
    REACT_APP_API_URL=http://localhost:8000
-   REACT_APP_***REMOVED***=your-google-client-id
+   REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
    ```
 
 ### Port Requirements

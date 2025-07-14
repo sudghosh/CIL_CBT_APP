@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 # Database connection settings for Docker environment
 # Try multiple possible database URLs
-***REMOVED***S = [
+DATABASE_URLS = [
     "postgresql://cildb:cildb123@cil_hr_postgres:5432/cil_cbt_test",
     "postgresql://cildb:cildb123@postgres:5432/cil_cbt_test",
     "postgresql://cildb:cildb123@cil_cbt_app-postgres-1:5432/cil_cbt_db",
@@ -25,14 +25,14 @@ async def check_database_schema():
     engine = None
     
     # Try to connect with different database URLs
-    for ***REMOVED*** in ***REMOVED***S:
+    for DATABASE_URL in DATABASE_URLS:
         try:
-            print(f"Trying to connect to: {***REMOVED***}")
-            engine = create_engine(***REMOVED***.replace('+asyncpg', ''))
+            print(f"Trying to connect to: {DATABASE_URL}")
+            engine = create_engine(DATABASE_URL.replace('+asyncpg', ''))
             # Test the connection
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            connected_url = ***REMOVED***
+            connected_url = DATABASE_URL
             print(f"✅ Successfully connected!")
             break
         except Exception as e:

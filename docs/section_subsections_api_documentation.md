@@ -4,7 +4,7 @@ This document outlines the API endpoints related to subsection management in the
 
 ## Authentication
 
-All endpoints require a valid ***REMOVED*** token in the Authorization header:
+All endpoints require a valid JWT token in the Authorization header:
 
 ```
 Authorization: Bearer <token>
@@ -58,7 +58,7 @@ Retrieves all subsections that belong to a specific section.
 - The endpoint supports rate limiting (30 requests per minute)
 - The API is also available without the `/api` prefix for backward compatibility: `/sections/{section_id}/subsections/`
 - The frontend should always use the `/api` prefixed version
-- Both endpoints require proper authentication with a valid ***REMOVED*** token in the headers
+- Both endpoints require proper authentication with a valid JWT token in the headers
 
 ## Related Code
 

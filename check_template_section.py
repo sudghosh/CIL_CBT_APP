@@ -8,7 +8,7 @@ import json
 
 # Database settings
 DB_USER = "postgres" 
-DB_***REMOVED*** = "postgres"
+DB_PASSWORD = "postgres"
 DB_HOST = "localhost"
 DB_PORT = "5432"
 DB_NAME = "cil_cbt"
@@ -16,12 +16,12 @@ DB_NAME = "cil_cbt"
 # Read password from file if available
 try:
     with open(os.path.join("secrets", "db_password.txt"), "r") as f:
-        DB_***REMOVED*** = f.read().strip()
+        DB_PASSWORD = f.read().strip()
 except:
     pass
 
 # Connect to DB
-connection_string = f"postgresql://{DB_USER}:{DB_***REMOVED***}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_engine(connection_string)
 
 def check_template(template_id):

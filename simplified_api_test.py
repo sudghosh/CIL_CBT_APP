@@ -10,18 +10,18 @@ from sqlalchemy.orm import sessionmaker
 
 # Configure database connection
 DB_USER = "cildb"
-DB_***REMOVED*** = "cildb123"
+DB_PASSWORD = "cildb123"
 DB_HOST = "localhost" 
 DB_PORT = "5432"
 DB_NAME = "cil_cbt_db"
 
-***REMOVED*** = f"postgresql://{DB_USER}:{DB_***REMOVED***}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 def direct_api_call(paper_id):
     """Connect directly to the database and use SQLAlchemy to delete the paper"""
     try:
         # Create database connection
-        engine = create_engine(***REMOVED***)
+        engine = create_engine(DATABASE_URL)
         Session = sessionmaker(bind=engine)
         db = Session()
         

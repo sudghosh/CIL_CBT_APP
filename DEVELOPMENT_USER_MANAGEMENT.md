@@ -63,10 +63,10 @@ The system can be enhanced with an admin panel at `/admin/users` for:
 
 Ensure these are set in your environment:
 ```bash
-***REMOVED***=postgresql://cildb:your_password@localhost:5432/cil_cbt_db
-***REMOVED***=your-secret-key
-***REMOVED***=your-google-client-id
-***REMOVED***=your-google-client-secret
+DATABASE_URL=postgresql://cildb:your_password@localhost:5432/cil_cbt_db
+SECRET_KEY=your-secret-key
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
 ## Troubleshooting
@@ -75,7 +75,7 @@ Ensure these are set in your environment:
 1. Check if user is in `users` table
 2. Verify user is active (`is_active = true`)
 3. For personalized features, check `allowed_emails` table
-4. Verify ***REMOVED*** token is valid
+4. Verify JWT token is valid
 
 ### Adding Users via SQL:
 ```sql

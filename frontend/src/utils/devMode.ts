@@ -11,9 +11,9 @@ export const isDevMode = (): boolean => {
 };
 
 /**
- * Create a development ***REMOVED***-like token structure
- * This creates a token that looks like a ***REMOVED*** but is easily recognizable as a dev token
- * @returns string - a fake ***REMOVED*** token for development
+ * Create a development JWT-like token structure
+ * This creates a token that looks like a JWT but is easily recognizable as a dev token
+ * @returns string - a fake JWT token for development
  */
 export const createDevToken = (): string => {
   // Create a payload with admin user info and long expiry
@@ -27,13 +27,13 @@ export const createDevToken = (): string => {
   // Encode to base64
   const encodedPayload = btoa(JSON.stringify(payload));
   
-  // Create a structure similar to ***REMOVED*** with header.payload.signature
+  // Create a structure similar to JWT with header.payload.signature
   return `devheader.${encodedPayload}.devsignature`;
 };
 
 /**
  * The token used for development authentication
- * Now uses a ***REMOVED***-like structure to avoid backend parsing errors
+ * Now uses a JWT-like structure to avoid backend parsing errors
  */
 export const DEV_TOKEN = createDevToken();
 

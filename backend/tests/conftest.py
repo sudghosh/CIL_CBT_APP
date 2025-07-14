@@ -18,11 +18,11 @@ DB_USER = os.getenv('TEST_DB_USER', 'cildb')
 DB_PASS = os.getenv('TEST_DB_PASS', 'cildb123')
 DB_NAME = os.getenv('TEST_DB_NAME', 'cil_cbt_db_test')
 
-# Set ***REMOVED*** for TestClient to use the same database as tests
-TEST_***REMOVED*** = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-os.environ["***REMOVED***"] = TEST_***REMOVED***
+# Set DATABASE_URL for TestClient to use the same database as tests
+TEST_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
-# Now import main app - it will use the ***REMOVED*** we just set
+# Now import main app - it will use the DATABASE_URL we just set
 from src.main import app
 from src.database.database import get_db
 from src.database.models import Base
@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Use the same database URL that we set for the main app
-SQLALCHEMY_***REMOVED*** = TEST_***REMOVED***
+SQLALCHEMY_DATABASE_URL = TEST_DATABASE_URL
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
@@ -45,16 +45,16 @@ def setup_test_database():
     for attempt in range(retries):
         try:
             # Create test database if it doesn't exist
-            if database_exists(SQLALCHEMY_***REMOVED***):
+            if database_exists(SQLALCHEMY_DATABASE_URL):
                 logger.info(f"Dropping existing test database: {DB_NAME}")
-                drop_database(SQLALCHEMY_***REMOVED***)
+                drop_database(SQLALCHEMY_DATABASE_URL)
             
             logger.info(f"Creating test database: {DB_NAME} (attempt {attempt + 1}/{retries})")
-            create_database(SQLALCHEMY_***REMOVED***)
+            create_database(SQLALCHEMY_DATABASE_URL)
             
             # Create test engine with optimized settings
             engine = create_engine(
-                SQLALCHEMY_***REMOVED***,
+                SQLALCHEMY_DATABASE_URL,
                 connect_args={
                     "connect_timeout": 10,
                     "application_name": "cil_cbt_test_suite"
@@ -84,7 +84,7 @@ def setup_test_database():
     # Cleanup
     try:
         logger.info(f"Cleaning up test database: {DB_NAME}")
-        drop_database(SQLALCHEMY_***REMOVED***)
+        drop_database(SQLALCHEMY_DATABASE_URL)
     except Exception as e:
         logger.error(f"Error cleaning up test database: {str(e)}")
 
@@ -162,7 +162,7 @@ def test_user(db_session) -> Dict[str, Any]:
         db_session.add(allowed_email)
         db_session.commit()
     
-    # Create ***REMOVED*** token with proper claims
+    # Create JWT token with proper claims
     access_token = create_access_token(data={
         "sub": user.email,
         "role": user.role,
@@ -231,7 +231,7 @@ def admin_user(db_session) -> Dict[str, Any]:
         test_whitelist.added_by_admin_id = admin_user.user_id
         db_session.commit()
     
-    # Create ***REMOVED*** token with proper claims
+    # Create JWT token with proper claims
     access_token = create_access_token(data={
         "sub": admin_user.email,
         "role": admin_user.role,

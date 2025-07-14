@@ -8,7 +8,7 @@ import json
 
 # Database settings - adjust as needed
 DB_USER = "postgres" 
-DB_***REMOVED*** = "postgres"  # Replace with your actual password
+DB_PASSWORD = "postgres"  # Replace with your actual password
 DB_HOST = "localhost"
 DB_PORT = "5432"
 DB_NAME = "cil_cbt"
@@ -16,14 +16,14 @@ DB_NAME = "cil_cbt"
 # Try to read password from secrets file
 try:
     with open(os.path.join("secrets", "db_password.txt"), "r") as f:
-        DB_***REMOVED*** = f.read().strip()
+        DB_PASSWORD = f.read().strip()
         print(f"Using password from secrets file")
 except:
     print(f"Using default password")
 
 # Create connection string
-connection_string = f"postgresql://{DB_USER}:{DB_***REMOVED***}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-print(f"Connection string: {connection_string.replace(DB_***REMOVED***, '*****')}")
+connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+print(f"Connection string: {connection_string.replace(DB_PASSWORD, '*****')}")
 
 # Connect to database
 try:

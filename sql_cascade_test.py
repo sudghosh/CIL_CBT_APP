@@ -20,7 +20,7 @@ def main():    # Connect to the database
         db_host = os.environ.get('POSTGRES_HOST', 'postgres')
         db_name = os.environ.get('POSTGRES_DB', 'cil_cbt_db')
         db_user = os.environ.get('POSTGRES_USER', 'cildb')
-        db_password = os.environ.get('***REMOVED***', 'cildb123')
+        db_password = os.environ.get('POSTGRES_PASSWORD', 'cildb123')
         
         logger.info(f"Connecting to database at {db_host}/{db_name} as {db_user}")
         conn = psycopg2.connect(

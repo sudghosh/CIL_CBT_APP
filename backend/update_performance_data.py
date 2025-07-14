@@ -21,14 +21,14 @@ from src.database.models import TestAttempt
 from src.tasks.performance_aggregator import performance_aggregation_task
 
 # Database connection
-***REMOVED*** = os.environ.get("***REMOVED***", "postgresql://cildb:cildb123@localhost:5432/cil_cbt_db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://cildb:cildb123@localhost:5432/cil_cbt_db")
 
 async def main():
     """Update performance data for all existing test attempts"""
     print("🔄 Starting performance data update...")
     
     # Create database connection
-    engine = create_engine(***REMOVED***.replace('+asyncpg', ''))
+    engine = create_engine(DATABASE_URL.replace('+asyncpg', ''))
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     db = SessionLocal()

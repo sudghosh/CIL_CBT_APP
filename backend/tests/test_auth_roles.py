@@ -1,13 +1,13 @@
 """
 Tests for verifying authentication flows related to the CIL CBT App.
 These tests validate the behavior of Google authentication, role preservation,
-and proper ***REMOVED*** token generation.
+and proper JWT token generation.
 
 Important behaviors tested:
 1. Whitelisting checks
 2. Role preservation for existing users
 3. Default role assignment for new users
-4. Inclusion of role and user_id in ***REMOVED*** tokens
+4. Inclusion of role and user_id in JWT tokens
 """
 
 import os
@@ -18,7 +18,7 @@ from jose import jwt
 from fastapi import status
 
 # Use the correct import style for backend tests
-from src.auth.auth import ***REMOVED***, ALGORITHM
+from src.auth.auth import SECRET_KEY, ALGORITHM
 from src.database.models import User, AllowedEmail
 
 
@@ -46,7 +46,7 @@ def test_verify_token_includes_correct_role(client, db_session):
         "user_id": admin_user.user_id,
         "exp": datetime.utcnow() + timedelta(minutes=15)
     }
-    token = jwt.encode(payload, ***REMOVED***, algorithm=ALGORITHM)
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     
     # Test the /auth/me endpoint which uses verify_token
     client.headers = {"Authorization": f"Bearer {token}"}
@@ -74,7 +74,7 @@ def test_dev_login_includes_role_and_user_id(client, db_session):
     
     # Verify token contains role and user_id
     token = response.json()["access_token"]
-    payload = jwt.decode(token, ***REMOVED***, algorithms=[ALGORITHM])
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     
     assert "role" in payload
     assert payload["role"] == "Admin"  # Dev login should create Admin role

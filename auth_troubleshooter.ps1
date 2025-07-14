@@ -111,7 +111,7 @@ if (Test-Path "auth_token.json") {
     try {
         $tokenData = Get-Content "auth_token.json" -Raw | ConvertFrom-Json
         if ($tokenData.access_token) {
-            # Do basic validation (***REMOVED*** tokens have 3 parts separated by dots)
+            # Do basic validation (JWT tokens have 3 parts separated by dots)
             $tokenParts = $tokenData.access_token -split "\."
             if ($tokenParts.Count -eq 3) {
                 Write-Host "✓ Token appears valid (has 3 parts)." -ForegroundColor Green
@@ -136,7 +136,7 @@ if (Test-Path "auth_token.json") {
                     Write-Host "! Could not decode token payload to check expiration." -ForegroundColor Yellow
                 }
             } else {
-                Write-Host "✗ Token does not appear to be a valid ***REMOVED*** token (doesn't have 3 parts)." -ForegroundColor Red
+                Write-Host "✗ Token does not appear to be a valid JWT token (doesn't have 3 parts)." -ForegroundColor Red
             }
         } else {
             Write-Host "✗ No access_token found in auth_token.json." -ForegroundColor Red

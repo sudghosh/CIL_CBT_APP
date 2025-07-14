@@ -1,11 +1,11 @@
 import os
 
-api_key_encryption_key = os.environ.get("***REMOVED***_ENCRYPTION_KEY")
+api_key_encryption_key = os.environ.get("API_KEY_ENCRYPTION_KEY")
 if api_key_encryption_key:
-    print(f"***REMOVED***_ENCRYPTION_KEY environment variable is set. Length: {len(api_key_encryption_key)}")
+    print(f"API_KEY_ENCRYPTION_KEY environment variable is set. Length: {len(api_key_encryption_key)}")
     print(f"First few characters: {api_key_encryption_key[:10]}...")
 else:
-    print("***REMOVED***_ENCRYPTION_KEY environment variable is NOT set!")
+    print("API_KEY_ENCRYPTION_KEY environment variable is NOT set!")
 
 # List other relevant environment variables
 print("\nOther environment variables:")

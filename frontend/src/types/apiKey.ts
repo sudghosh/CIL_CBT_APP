@@ -33,7 +33,7 @@ export interface ApiKeyRetrievalResult {
   };
 }
 
-export const ***REMOVED***_TYPES: Array<{ value: ApiKeyType; label: string }> = [
+export const API_KEY_TYPES: Array<{ value: ApiKeyType; label: string }> = [
   { value: 'google', label: 'Google' },
   { value: 'openrouter', label: 'OpenRouter' },
   { value: 'a4f', label: 'A4F.co' },

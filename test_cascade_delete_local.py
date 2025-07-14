@@ -20,17 +20,17 @@ logger = logging.getLogger(__name__)
 
 # Use local database connection - adjust these as needed for local setup
 LOCAL_DB_USER = "postgres"
-LOCAL_DB_***REMOVED*** = "postgres"  # Replace with your local postgres password
+LOCAL_DB_PASSWORD = "postgres"  # Replace with your local postgres password
 LOCAL_DB_HOST = "localhost"
 LOCAL_DB_PORT = "5432"
 LOCAL_DB_NAME = "cil_cbt_app"
 
 # Create SQLAlchemy engine and session
-***REMOVED*** = f"postgresql://{LOCAL_DB_USER}:{LOCAL_DB_***REMOVED***}@{LOCAL_DB_HOST}:{LOCAL_DB_PORT}/{LOCAL_DB_NAME}"
+DATABASE_URL = f"postgresql://{LOCAL_DB_USER}:{LOCAL_DB_PASSWORD}@{LOCAL_DB_HOST}:{LOCAL_DB_PORT}/{LOCAL_DB_NAME}"
 
 try:
     # Create the engine
-    engine = create_engine(***REMOVED***)
+    engine = create_engine(DATABASE_URL)
     
     # Create a session
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -57,7 +57,7 @@ def test_direct_sql_cascade_delete():
             port=LOCAL_DB_PORT,
             database=LOCAL_DB_NAME,
             user=LOCAL_DB_USER,
-            password=LOCAL_DB_***REMOVED***
+            password=LOCAL_DB_PASSWORD
         )
         conn.autocommit = False
         cursor = conn.cursor()

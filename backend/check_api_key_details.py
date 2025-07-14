@@ -4,8 +4,8 @@ from sqlalchemy.ext.declarative import declarative_base
 import os
 from src.database.models import APIKey, APIKeyType
 
-***REMOVED*** = os.environ.get('***REMOVED***')
-engine = create_engine(***REMOVED***)
+DATABASE_URL = os.environ.get('DATABASE_URL')
+engine = create_engine(DATABASE_URL)
 Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db = Session()
 

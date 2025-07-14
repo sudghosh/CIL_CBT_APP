@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Get database URL from environment variable or use default for Docker setup
-***REMOVED*** = os.getenv("***REMOVED***", "postgresql://cildb:cildb123@postgres:5432/cil_cbt_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://cildb:cildb123@postgres:5432/cil_cbt_db")
 
 # List of constraints that need to be added or updated
 constraints_to_fix = [
@@ -48,8 +48,8 @@ def main():
     """Main function to run the migration"""
     try:
         # Create SQLAlchemy engine
-        logger.info(f"Connecting to database: {***REMOVED***.split('@')[1]}")
-        engine = create_engine(***REMOVED***)
+        logger.info(f"Connecting to database: {DATABASE_URL.split('@')[1]}")
+        engine = create_engine(DATABASE_URL)
         
         # Execute migration
         with engine.connect() as conn:

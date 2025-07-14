@@ -16,32 +16,32 @@ except ImportError:
     print("python-dotenv not found, using environment variables directly")
 
 # Database configuration - Read directly from .env file
-***REMOVED*** = os.environ.get("***REMOVED***")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# If ***REMOVED*** not found in environment, use default values
-if not ***REMOVED***:
+# If DATABASE_URL not found in environment, use default values
+if not DATABASE_URL:
     try:
         # Read from .env file
         with open('.env', 'r') as f:
             for line in f:
-                if line.strip().startswith('***REMOVED***='):
-                    ***REMOVED*** = line.strip().split('=', 1)[1]
-                    print(f"Found ***REMOVED*** in .env file")
+                if line.strip().startswith('DATABASE_URL='):
+                    DATABASE_URL = line.strip().split('=', 1)[1]
+                    print(f"Found DATABASE_URL in .env file")
                     break
     except Exception as e:
         print(f"Error reading .env file: {e}")
         
     # If still not found, use default values
-    if not ***REMOVED***:
-        print("WARNING: ***REMOVED*** not found in environment or .env file. Using default values.")
+    if not DATABASE_URL:
+        print("WARNING: DATABASE_URL not found in environment or .env file. Using default values.")
         DB_USER = "postgres"
-        DB_***REMOVED*** = "postgres"
+        DB_PASSWORD = "postgres"
         DB_HOST = "localhost"
         DB_PORT = "5432"
         DB_NAME = "cil_cbt_db"
-        ***REMOVED*** = f"postgresql://{DB_USER}:{DB_***REMOVED***}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-print(f"Using database URL: {***REMOVED***.split('@')[0].split('://')[0]}://*****@{***REMOVED***.split('@')[1]}")
+print(f"Using database URL: {DATABASE_URL.split('@')[0].split('://')[0]}://*****@{DATABASE_URL.split('@')[1]}")
 
 def run_migration():
     """Run the migration to add the max_questions column to test_attempts table"""
@@ -49,7 +49,7 @@ def run_migration():
     
     try:
         # Connect to the database
-        engine = create_engine(***REMOVED***)
+        engine = create_engine(DATABASE_URL)
         metadata = MetaData()
         
         # Check if the column already exists

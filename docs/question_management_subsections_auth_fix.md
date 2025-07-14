@@ -14,13 +14,13 @@ This prevented users from selecting subsections when creating or editing questio
 
 The issue was identified as an authentication problem in the frontend code. The API endpoint `/api/sections/{section_id}/subsections/` was properly implemented in the backend and registered both with and without the `/api` prefix. 
 
-However, in the frontend's `QuestionManagement.tsx` file, the fetch request for subsections wasn't including the ***REMOVED*** token in the Authorization header, unlike other API calls in the application.
+However, in the frontend's `QuestionManagement.tsx` file, the fetch request for subsections wasn't including the JWT token in the Authorization header, unlike other API calls in the application.
 
 ## Solution
 
 ### 1. Added Authentication to Subsection Fetch Request
 
-Modified the fetch request in `QuestionManagement.tsx` to include the ***REMOVED*** token in the headers:
+Modified the fetch request in `QuestionManagement.tsx` to include the JWT token in the headers:
 
 ```typescript
 // Before:

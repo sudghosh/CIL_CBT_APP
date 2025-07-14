@@ -22,30 +22,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Database connection URL from environment variables
-# This should match the ***REMOVED*** set in your .env.dev file
+# This should match the DATABASE_URL set in your .env.dev file
 # and passed by docker-compose to the backend service.
-***REMOVED*** = os.getenv("***REMOVED***")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # For debugging: retrieve individual components for verification
 DEBUG_POSTGRES_USER = os.getenv("POSTGRES_USER")
-DEBUG_***REMOVED*** = os.getenv("***REMOVED***")
+DEBUG_POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DEBUG_POSTGRES_DB = os.getenv("POSTGRES_DB")
 
 # --- Debugging Output (TEMPORARY - Remove in Production) ---
 logger.info("\n--- Environment Variables as seen by init_db.py ---")
-logger.info(f"***REMOVED***: {***REMOVED***}")
+logger.info(f"DATABASE_URL: {DATABASE_URL}")
 logger.info(f"POSTGRES_USER: {DEBUG_POSTGRES_USER}")
 # Be cautious when printing passwords, especially in production logs
-if DEBUG_***REMOVED***:
-    masked_password = DEBUG_***REMOVED***[:2] + "*" * (len(DEBUG_***REMOVED***) - 4) + DEBUG_***REMOVED***[-2:]
-    logger.info(f"***REMOVED***: {masked_password}")
+if DEBUG_POSTGRES_PASSWORD:
+    masked_password = DEBUG_POSTGRES_PASSWORD[:2] + "*" * (len(DEBUG_POSTGRES_PASSWORD) - 4) + DEBUG_POSTGRES_PASSWORD[-2:]
+    logger.info(f"POSTGRES_PASSWORD: {masked_password}")
 logger.info(f"POSTGRES_DB: {DEBUG_POSTGRES_DB}")
 logger.info("-----------------------------------------------------------\n")
 # --- End Debugging Output ---
 
 
-if not ***REMOVED***:
-    logger.error("Error: ***REMOVED*** environment variable is not set. Exiting.")
+if not DATABASE_URL:
+    logger.error("Error: DATABASE_URL environment variable is not set. Exiting.")
     exit(1)
 
 def seed_initial_user_data():

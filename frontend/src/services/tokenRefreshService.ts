@@ -91,7 +91,7 @@ export class TokenRefreshService {
         };
       }
 
-      // Parse ***REMOVED*** token to get expiry
+      // Parse JWT token to get expiry
       const payload = JSON.parse(atob(token.split('.')[1]));
       return {
         token,
