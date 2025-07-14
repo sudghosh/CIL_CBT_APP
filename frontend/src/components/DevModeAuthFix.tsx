@@ -17,7 +17,7 @@ export const DevModeAuthFix: React.FC = () => {
     };
   }, []);
 
-  // Only render in development mode
+  // Only render if dev login is enabled
   if (!isDevMode()) {
     return null;
   }

@@ -7,7 +7,8 @@
  * @returns boolean - true if in development mode
  */
 export const isDevMode = (): boolean => {
-  return process.env.NODE_ENV === 'development';
+  // Use the environment variable to control dev login features
+  return process.env.REACT_APP_ENABLE_DEV_LOGIN === 'true';
 };
 
 /**

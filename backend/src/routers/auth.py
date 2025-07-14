@@ -159,12 +159,11 @@ async def read_users_me(current_user: User = Depends(verify_token)):
 # This should only be used in development environment
 @router.post("/dev-login")
 async def dev_login(db: Session = Depends(get_db)):
-    # Check if we're in development mode (could be checked via environment variable)
-    # For security, ensure this endpoint is disabled in production
-    if os.getenv("ENV") != "development" and os.getenv("ENV") != "dev":
+    # Check if development login is enabled via environment variable
+    if os.getenv("ENABLE_DEV_LOGIN", "false").lower() != "true":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Development login is only available in development environment"
+            detail="Development login is only available when ENABLE_DEV_LOGIN is true"
         )
     
     # Use the email of the user who has performance data for easier testing

@@ -7,6 +7,80 @@ import { logError } from '../utils/errorHandler';
 import { isDevMode } from '../utils/devMode';
 
 export const LoginPage: React.FC = (): JSX.Element => {
+  // Google login success handler
+  const handleSuccess = async (credentialResponse: CredentialResponse) => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('Google login response received');
+
+      if (!credentialResponse.credential) {
+        throw new Error('No credential received from Google');
+      }
+
+      // Add retry logic for login
+      let loginSuccess = false;
+      let loginAttempts = 0;
+      const maxAttempts = 2;
+      let lastError: any = null;
+      
+      while (!loginSuccess && loginAttempts < maxAttempts) {
+        try {
+          loginAttempts++;
+          console.log(`Google login attempt ${loginAttempts} of ${maxAttempts}`);
+          // Time the login process for debugging
+          const startTime = performance.now();
+          await login({ token: credentialResponse.credential });
+          const endTime = performance.now();
+          console.log(`Login completed in ${(endTime - startTime).toFixed(0)}ms`);
+          loginSuccess = true;
+        } catch (err: any) {
+          lastError = err;
+          console.error(`Login attempt ${loginAttempts} failed:`, err);
+          // Check if we should retry
+          if (loginAttempts < maxAttempts) {
+            console.log(`Retrying login in 1 second...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      // If all attempts failed, throw the last error
+      if (!loginSuccess) {
+        throw lastError || new Error('All login attempts failed');
+      }
+      // Check if we need to redirect to a specific page after login
+      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectUrl) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectUrl);
+      } else {
+        // Default redirect to home
+        navigate('/');
+      }
+      // Display any stored auth error messages
+      const authErrorMsg = sessionStorage.getItem('authError');
+      if (authErrorMsg) {
+        sessionStorage.removeItem('authError');
+        // Use a setTimeout to ensure the error appears after navigation
+        setTimeout(() => {
+          setError(authErrorMsg);
+        }, 100);
+      }
+    } catch (err: any) {
+      logError(err, { context: 'Google login success handler' });
+      // Provide more helpful error messages based on error type
+      let errorMessage = err.response?.data?.detail || err.message || 'Failed to login';
+      if (err.message && err.message.includes('timeout')) {
+        errorMessage = 'Login request timed out. Please check your connection and try again.';
+      }
+      if (err.response?.status === 401) {
+        errorMessage = 'Your email is not authorized for this application. Please contact an administrator.';
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
   const { login, developmentLogin, error: authError, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,12 +111,9 @@ export const LoginPage: React.FC = (): JSX.Element => {
       setLoading(true);
       setError(null);
       console.log('Attempting development login...');
-      
       // Use the new development login function from context
       await developmentLogin();
-      
       console.log('Development login successful');
-      
       // Redirect after successful login
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
       if (redirectUrl) {
@@ -58,92 +129,6 @@ export const LoginPage: React.FC = (): JSX.Element => {
       setLoading(false);
     }
   }, [developmentLogin, navigate]);
-  
-  // Remove auto-login - users must explicitly choose login method
-
-  const handleSuccess = async (credentialResponse: CredentialResponse) => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('Google login response received');
-
-      if (!credentialResponse.credential) {
-        throw new Error('No credential received from Google');
-      }
-
-      // Add retry logic for login
-      let loginSuccess = false;
-      let loginAttempts = 0;
-      const maxAttempts = 2;
-      let lastError: any = null;
-      
-      while (!loginSuccess && loginAttempts < maxAttempts) {
-        try {
-          loginAttempts++;
-          console.log(`Google login attempt ${loginAttempts} of ${maxAttempts}`);
-          
-          // Time the login process for debugging
-          const startTime = performance.now();
-          await login({ token: credentialResponse.credential });
-          const endTime = performance.now();
-          console.log(`Login completed in ${(endTime - startTime).toFixed(0)}ms`);
-          
-          loginSuccess = true;
-        } catch (err: any) {
-          lastError = err;
-          console.error(`Login attempt ${loginAttempts} failed:`, err);
-          
-          // Check if we should retry
-          if (loginAttempts < maxAttempts) {
-            console.log(`Retrying login in 1 second...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      
-      // If all attempts failed, throw the last error
-      if (!loginSuccess) {
-        throw lastError || new Error('All login attempts failed');
-      }
-      
-      // Check if we need to redirect to a specific page after login
-      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-      if (redirectUrl) {
-        sessionStorage.removeItem('redirectAfterLogin');
-        navigate(redirectUrl);
-      } else {
-        // Default redirect to home
-        navigate('/');
-      }
-      
-      // Display any stored auth error messages
-      const authErrorMsg = sessionStorage.getItem('authError');
-      if (authErrorMsg) {
-        sessionStorage.removeItem('authError');
-        // Use a setTimeout to ensure the error appears after navigation
-        setTimeout(() => {
-          setError(authErrorMsg);
-        }, 100);
-      }
-    } catch (err: any) {
-      logError(err, { context: 'Google login success handler' });
-      
-      // Provide more helpful error messages based on error type
-      let errorMessage = err.response?.data?.detail || err.message || 'Failed to login';
-      
-      if (err.message && err.message.includes('timeout')) {
-        errorMessage = 'Login request timed out. Please check your connection and try again.';
-      }
-      
-      if (err.response?.status === 401) {
-        errorMessage = 'Your email is not authorized for this application. Please contact an administrator.';
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleError = () => {
     console.error('Google sign-in failed');
@@ -230,19 +215,21 @@ export const LoginPage: React.FC = (): JSX.Element => {
                     Google Client ID is missing. Please check your configuration.
                   </Alert>
                 )}
-                
-                <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
-                  <Typography variant="caption" color="textSecondary">OR</Typography>
-                </Divider>
-                
-                <Button 
-                  variant="outlined" 
-                  color="primary" 
-                  onClick={handleDevLogin}
-                  sx={{ width: '300px' }}
-                >
-                  Development Login (Bypass Google)
-                </Button>
+                {isDevMode() && (
+                  <>
+                    <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
+                      <Typography variant="caption" color="textSecondary">OR</Typography>
+                    </Divider>
+                    <Button 
+                      variant="outlined" 
+                      color="primary" 
+                      onClick={handleDevLogin}
+                      sx={{ width: '300px' }}
+                    >
+                      Development Login (Bypass Google)
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </Box>

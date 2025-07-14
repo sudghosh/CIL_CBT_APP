@@ -101,6 +101,49 @@ API documentation is available at `/docs` or `/redoc` when the application is ru
 - [Database Schema](./docs/database_schema.md)
 - [API Reference](./docs/api_reference.md)
 
+## Environment Variables & Secrets Management
+
+**Important for All Collaborators:**
+- Environment files (`.env`, `.env.dev`, `.env.prod`, etc.) and any secrets folders are **never** tracked in git. You must create and manage these files locally or in your deployment environment.
+
+### How to Use Environment Files
+
+- **Development:**
+  - Copy `.env.dev` to `.env` in your local root or backend folder.
+  - Fill in development credentials (never use production secrets for local dev).
+  - Example:
+    ```
+    cp .env.dev .env
+    ```
+
+- **Production:**
+  - Copy `.env.prod` to `.env` on your deployment server or Docker container.
+  - Fill in all production secrets and credentials before starting the app.
+  - Example:
+    ```
+    cp .env.prod .env
+    ```
+
+- **Backend/Frontend/DB:**
+  - Each service may have its own `.env` file (e.g., `backend/.env`, `frontend/.env`, `db/.env`).
+  - Always use the correct template and fill in the required values.
+
+### Security Best Practices
+
+- **Never commit any `.env` or secrets files to git.**
+- `.gitignore` is configured to exclude all secret files and folders.
+- If you suspect a secret was ever exposed, rotate it immediately.
+- Store production secrets securely (e.g., server environment, Docker secrets, or a secrets manager).
+
+### After a Git History Rewrite
+
+- All collaborators **must re-clone** the repository after a history rewrite (e.g., after secrets are purged from git history).
+- Old clones will not work with the new history.
+
+---
+
+**If you have questions about environment setup or secrets management, contact the project maintainer.**
+
 ## Testing
 
 Run the test suite:

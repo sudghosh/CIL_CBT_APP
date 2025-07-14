@@ -82,13 +82,14 @@ services:
     env_file:
       - ./.env.dev
     environment:
-      SECRET_KEY_FILE: /run/secrets/secret_key
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 240
-      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
-      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      - ENABLE_DEV_LOGIN=${ENABLE_DEV_LOGIN}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=240
+      - GOOGLE_CLIENT_ID_FILE=/run/secrets/google_client_id
+      - GOOGLE_CLIENT_SECRET_FILE=/run/secrets/google_client_secret
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
     ports:
       - "8000:8000"
     volumes:
@@ -137,6 +138,7 @@ services:
       - NODE_ENV=development
       - REACT_APP_API_URL=${REACT_APP_API_URL}
       - REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID}
+      - REACT_APP_ENABLE_DEV_LOGIN=${ENABLE_DEV_LOGIN}
       - WATCHPACK_POLLING=${WATCHPACK_POLLING}
       - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING}
       # Memory optimization settings
