@@ -1,0 +1,19 @@
+# .gitignore for FastAPI backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+.DS_Store
+venv/
+.cache/
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
