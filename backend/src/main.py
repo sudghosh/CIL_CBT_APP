@@ -63,27 +63,45 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Add CORS middleware with development-friendly configuration
-origins = ["http://localhost:3000"]
-# In development mode, allow all origins for easier debugging
-if os.environ.get("ENV") == "development" or os.environ.get("CORS_ALLOW_ALL") == "true":
-    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]  # Specific origins instead of wildcard
-    logger.info("Development mode: CORS configured for local development origins")
 
-logger.info(f"CORS origins configured: {origins}")  # Explicit log for CORS origins
-# IMPORTANT: For local development, ensure http://localhost:3000 is included in CORS_ORIGINS if using environment variables or config files.
-# Example: CORS_ORIGINS=http://localhost:3000,https://your-production-domain.com
+# --- CORS Configuration Guide ---
+# To switch CORS between development and production:
+# 1. Set ENV=development for local dev, ENV=production for prod.
+# 2. For production, set CORS_ORIGINS as a comma-separated list of allowed origins (e.g. https://yourdomain.com,https://admin.yourdomain.com)
+# 3. For development, you can set CORS_ALLOW_ALL=true to allow local origins.
+#
+# Example (in .env or Cloud Run env vars):
+#   ENV=production
+#   CORS_ORIGINS=https://yourdomain.com,https://admin.yourdomain.com
+#
+# Example (for local dev):
+#   ENV=development
+#   CORS_ALLOW_ALL=true
+#   CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
-# Use the built-in FastAPI CORSMiddleware for better stability and less memory usage
-logger.info("Using standard FastAPI CORSMiddleware for CORS handling")
+def get_cors_origins():
+    env = os.environ.get("ENV", "development")
+    allow_all = os.environ.get("CORS_ALLOW_ALL", "false").lower() == "true"
+    cors_origins_env = os.environ.get("CORS_ORIGINS")
+    if allow_all or env == "development":
+        # Default dev origins
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    if cors_origins_env:
+        # Parse comma-separated origins
+        return [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+    # Fallback: allow no origins
+    return []
+
+origins = get_cors_origins()
+logger.info(f"CORS origins configured: {origins}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Use specific origins instead of wildcard
-    allow_credentials=True,  # Allow credentials since we're not using wildcard
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["Content-Type", "Authorization"],
-    max_age=600  # Cache preflight requests for 10 minutes
+    max_age=600
 )
 
 # Add detailed request/response logging middleware for improved debugging
@@ -193,9 +211,11 @@ async def health_check(request: Request):
 # Add OPTIONS handlers for the /api/papers routes to handle CORS preflight requests
 @app.options("/api/papers/", include_in_schema=False)
 async def options_api_papers():
+    # Use dynamic CORS origin from environment
+    allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
     return {
         "Allow": "POST, GET, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PATCH, PUT, DELETE",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -204,9 +224,10 @@ async def options_api_papers():
 @app.options("/api/papers/{paper_id}", include_in_schema=False)
 @app.options("/api/papers/{paper_id}/", include_in_schema=False)
 async def options_api_paper_by_id(paper_id: int):
+    allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
     return {
         "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -214,9 +235,10 @@ async def options_api_paper_by_id(paper_id: int):
 
 @app.options("/api/papers/{paper_id}/activate/", include_in_schema=False)
 async def options_api_paper_activate(paper_id: int):
+    allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
     return {
         "Allow": "POST, PUT, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "POST, PUT, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -224,9 +246,10 @@ async def options_api_paper_activate(paper_id: int):
 
 @app.options("/api/papers/{paper_id}/deactivate/", include_in_schema=False)
 async def options_api_paper_deactivate(paper_id: int):
+    allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
     return {
         "Allow": "POST, PUT, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "POST, PUT, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -235,9 +258,10 @@ async def options_api_paper_deactivate(paper_id: int):
 # Add OPTIONS handlers for the /api/sections routes to handle CORS preflight requests
 @app.options("/api/sections/{section_id}/subsections/", include_in_schema=False)
 async def options_api_sections_subsections():
+    allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
     return {
         "Allow": "GET, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
