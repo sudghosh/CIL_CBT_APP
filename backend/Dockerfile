@@ -80,6 +80,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Command to start the application.
-# This ensures the database is ready, then runs your init_db.py script,
-# and finally starts the Uvicorn server.
-CMD ["sh", "-c", "./wait-for-db.sh postgres && python init/init_db.py && exec uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+# DB_HOST and DB_PORT are set via environment variables for dev/prod.
+# Example for dev (docker-compose.dev.yml): DB_HOST=postgres DB_PORT=5432
+# Example for prod (Cloud Run): DB_HOST=<RENDER_HOSTNAME> DB_PORT=<RENDER_PORT>
+CMD ["sh", "-c", "./wait-for-db.sh $DB_HOST $DB_PORT && python init/init_db.py && exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT}"]

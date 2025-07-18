@@ -1,16 +1,14 @@
 #!/bin/sh
-# wait-for-db.sh
-
+# Usage: ./wait-for-db.sh [host] [port]
+# Reads DB_HOST and DB_PORT from args or environment variables.
 set -e
-
-host="$1"
-shift
+host="${1:-${DB_HOST:-postgres}}"
+port="${2:-${DB_PORT:-5432}}"
+shift 2
 cmd="$@"
-
-until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$host" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\q'; do
-  >&2 echo "Postgres is unavailable - sleeping"
-  sleep 1
+until pg_isready -h "$host" -p "$port"; do
+  echo "Waiting for PostgreSQL at $host:$port..."
+  sleep 2
 done
-
->&2 echo "Postgres is up - executing command"
+echo "Postgres is up - executing command"
 exec $cmd

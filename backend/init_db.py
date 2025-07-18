@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # This should match the DATABASE_URL set in your .env.dev file
 # and passed by docker-compose to the backend service.
 DATABASE_URL = os.getenv("DATABASE_URL")
+ENV = os.getenv("ENV", "development")  # Default to development if not set
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "binty.ghosh@gmail.com")
+ADMIN_GOOGLE_ID = os.getenv("ADMIN_GOOGLE_ID", "admin-dev-google-id-123456")
 
 # For debugging: retrieve individual components for verification
 DEBUG_POSTGRES_USER = os.getenv("POSTGRES_USER")
@@ -56,48 +59,34 @@ def seed_initial_user_data():
     try:
         db = SessionLocal()
         
-        # Define the admin user's email - IMPORTANT: The user should replace this with their actual email
-        admin_email = "binty.ghosh@gmail.com"  # <--- REPLACE WITH YOUR ACTUAL EMAIL
-        admin_google_id = "admin-dev-google-id-123456"
-        
-        logger.info(f"Checking if admin user already exists: {admin_email}")
-        
-        # Check if user already exists
-        existing_user = db.query(User).filter(User.email == admin_email).first()
-        
+        logger.info(f"Checking if admin user already exists: {ADMIN_EMAIL}")
+        existing_user = db.query(User).filter(User.email == ADMIN_EMAIL).first()
         if existing_user:
             logger.info(f"Admin user already exists with ID: {existing_user.user_id}")
             user_id = existing_user.user_id
         else:
-            # Create new admin user
             new_user = User(
-                google_id=admin_google_id,
-                email=admin_email,
+                google_id=ADMIN_GOOGLE_ID,
+                email=ADMIN_EMAIL,
                 first_name="Admin",
                 last_name="User",
-                role="Admin",  # Using capitalized "Admin" to match role checks elsewhere
+                role="Admin",
                 is_active=True
             )
             db.add(new_user)
-            db.flush()  # Flush to get the user_id
+            db.flush()
             user_id = new_user.user_id
             logger.info(f"Created new admin user with ID: {user_id}")
-        
-        # Check if allowed email already exists
-        existing_email = db.query(AllowedEmail).filter(AllowedEmail.email == admin_email).first()
-        
+        existing_email = db.query(AllowedEmail).filter(AllowedEmail.email == ADMIN_EMAIL).first()
         if existing_email:
-            logger.info(f"Admin email already whitelisted: {admin_email}")
+            logger.info(f"Admin email already whitelisted: {ADMIN_EMAIL}")
         else:
-            # Add admin email to allowed emails
             allowed_email = AllowedEmail(
-                email=admin_email,
+                email=ADMIN_EMAIL,
                 added_by_admin_id=user_id
             )
             db.add(allowed_email)
-            logger.info(f"Whitelisted admin email: {admin_email}")
-        
-        # Commit all changes
+            logger.info(f"Whitelisted admin email: {ADMIN_EMAIL}")
         db.commit()
         logger.info("Successfully seeded initial user data")
         
@@ -112,18 +101,19 @@ if __name__ == "__main__":
     logger.info("Running init_db.py...")
     
     try:
+        logger.info(f"Detected ENV: {ENV}")
         # Step 1: Create database tables
         create_db_and_tables()
         logger.info("Database tables created successfully")
-        
         # Step 2: Seed initial user data (admin user and whitelist)
         seed_initial_user_data()
         logger.info("Initial user data seeded successfully")
-        
-        # Step 3: Seed sample application data (papers, questions, etc.)
-        seed_sample_application_data()
-        logger.info("Sample application data seeded successfully")
-        
+        # Step 3: Conditionally seed sample application data
+        if ENV == "development":
+            seed_sample_application_data()
+            logger.info("Sample application data seeded successfully")
+        else:
+            logger.info("Skipping sample application data seeding in production mode")
         logger.info("Database initialization completed successfully")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
