@@ -1,4 +1,5 @@
 # Stage 1: Build stage
+# Uses python:3.11-slim-bullseye as per your existing Dockerfile
 FROM python:3.11-slim-bullseye as builder
 
 # Set environment variables for the build stage
@@ -8,6 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install system build dependencies for Python packages.
+# Added gfortran and libatlas-base-dev for optimal numpy/pandas compilation,
+# which can resolve 'numpy.dtype size changed' errors.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -21,15 +24,18 @@ RUN apt-get update \
 WORKDIR /app
 
 # Copy requirements.txt first to leverage Docker cache.
+# Assumes requirements.txt is in the build context root (e.g., in the 'backend' folder).
 COPY requirements.txt .
 
 # Install Python dependencies as defined in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all application code into the builder stage.
+# This includes src/, init/, wait-for-db.sh, etc. from your backend directory.
 COPY . .
 
 # Stage 2: Runtime stage
+# This stage will be smaller and only contain what's necessary for running the app.
 FROM python:3.11-slim-bullseye
 
 # Set environment variables for runtime
@@ -37,6 +43,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Install only essential runtime dependencies.
+# postgresql-client is needed to run psql commands in wait-for-db.sh or init_db.py.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         postgresql-client \
@@ -54,17 +61,18 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 # Copy executables like uvicorn, if they are installed in /usr/local/bin by pip.
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 # Copy the application code from the builder stage, ensuring correct ownership.
+# This brings src/, init/, wait-for-db.sh, etc. to the final image.
 COPY --from=builder --chown=appuser:appuser /app .
 
 # Create necessary directories with correct permissions for the appuser.
 RUN mkdir -p /app/logs /var/log/app \
     && chown -R appuser:appuser /app /var/log/app \
-    && chmod +x /app/wait-for-db.sh # Keep this, wait-for-db.sh might be useful for local dev
+    && chmod +x /app/wait-for-db.sh
 
 # Switch to the non-root user.
 USER appuser
 
-# Health check (optional, but good practice)
+# Health check to ensure the application is running.
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
@@ -72,6 +80,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Command to start the application.
-# *** SIMPLIFIED CMD: Directly start Uvicorn ***
-# CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
-CMD uvicorn src.main:app --host 0.0.0.0 --port ${PORT}
+# DB_HOST and DB_PORT are set via environment variables for dev/prod.
+# Example for dev (docker-compose.dev.yml): DB_HOST=postgres DB_PORT=5432
+# Example for prod (Cloud Run): DB_HOST=<RENDER_HOSTNAME> DB_PORT=<RENDER_PORT>
+CMD ["sh", "-c", "./wait-for-db.sh && python init/init_db.py && exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT}"]
