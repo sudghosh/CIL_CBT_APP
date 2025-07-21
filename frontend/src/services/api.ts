@@ -1039,13 +1039,12 @@ export const papersAPI = {
    */
   getPapers: async (params?: { page?: number; page_size?: number }) => {
     try {
-      // First try to fetch papers from the API
+      // Always use relative URL and pass baseURL to axiosWithRetry
       const url = params 
-        ? `${finalApiUrl}/api/papers/?page=${params.page || 1}&page_size=${params.page_size || 10}` 
-        : `${finalApiUrl}/api/papers/`;
-      assertNoApiUrlUsage(url);
+        ? `/api/papers/?page=${params.page || 1}&page_size=${params.page_size || 10}` 
+        : '/api/papers/';
       console.log('[API][DEBUG] axiosWithRetry.get baseURL:', finalApiUrl, 'url:', url);
-      const response = await axiosWithRetry.get(url);
+      const response = await axiosWithRetry.get(url, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       // Log and handle specific API errors
@@ -1097,7 +1096,7 @@ export const papersAPI = {
    */
   createPaper: async (paperData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/`, paperData);
+      const response = await axiosWithRetry.post('/api/papers/', paperData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1113,7 +1112,7 @@ export const papersAPI = {
    */
   updatePaper: async (paperId: number, paperData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${finalApiUrl}/api/papers/${paperId}/`, paperData);
+      const response = await axiosWithRetry.put(`/api/papers/${paperId}/`, paperData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1128,7 +1127,7 @@ export const papersAPI = {
    */
   deletePaper: async (paperId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/papers/${paperId}/`);
+      const response = await axiosWithRetry.delete(`/api/papers/${paperId}/`, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1140,10 +1139,11 @@ export const papersAPI = {
   /**
    * Activate a paper
    * @param paperId - ID of the paper to activate
-   */  activatePaper: async (paperId: number) => {
+   */
+  activatePaper: async (paperId: number) => {
     try {
       // Using the improved axiosWithRetry that properly includes auth tokens
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/${paperId}/activate/`, {});
+      const response = await axiosWithRetry.post(`/api/papers/${paperId}/activate/`, {}, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1155,10 +1155,11 @@ export const papersAPI = {
   /**
    * Deactivate a paper
    * @param paperId - ID of the paper to deactivate
-   */  deactivatePaper: async (paperId: number) => {
+   */
+  deactivatePaper: async (paperId: number) => {
     try {
       // Using the improved axiosWithRetry that properly includes auth tokens
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/${paperId}/deactivate/`, {});
+      const response = await axiosWithRetry.post(`/api/papers/${paperId}/deactivate/`, {}, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1172,7 +1173,7 @@ export const papersAPI = {
    */
   createSamplePaper: async () => {
     try {
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/create-sample/`, {});
+      const response = await axiosWithRetry.post('/api/papers/create-sample/', {}, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1192,7 +1193,7 @@ export const sectionsAPI = {
    */
   getSectionsByPaperId: async (paperId: number) => {
     try {
-      const response = await axiosWithRetry.get(`${finalApiUrl}/api/papers/${paperId}/sections/`);
+      const response = await axiosWithRetry.get(`/api/papers/${paperId}/sections/`, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1220,7 +1221,7 @@ export const sectionsAPI = {
    */
   createSection: async (sectionData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/sections/`, sectionData);
+      const response = await axiosWithRetry.post('/api/sections/', sectionData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1236,7 +1237,7 @@ export const sectionsAPI = {
    */
   updateSection: async (sectionId: number, sectionData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${finalApiUrl}/api/sections/${sectionId}/`, sectionData);
+      const response = await axiosWithRetry.put(`/api/sections/${sectionId}/`, sectionData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1251,7 +1252,7 @@ export const sectionsAPI = {
    */
   deleteSection: async (sectionId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/sections/${sectionId}/`);
+      const response = await axiosWithRetry.delete(`/api/sections/${sectionId}/`, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1271,7 +1272,7 @@ export const subsectionsAPI = {
    */
   getSubsections: async (sectionId: number) => {
     try {
-      const response = await axiosWithRetry.get(`${finalApiUrl}/api/sections/${sectionId}/subsections/`);
+      const response = await axiosWithRetry.get(`/api/sections/${sectionId}/subsections/`, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1299,7 +1300,7 @@ export const subsectionsAPI = {
    */
   createSubsection: async (subsectionData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${finalApiUrl}/api/subsections/`, subsectionData);
+      const response = await axiosWithRetry.post('/api/subsections/', subsectionData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1315,7 +1316,7 @@ export const subsectionsAPI = {
    */
   updateSubsection: async (subsectionId: number, subsectionData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${finalApiUrl}/api/subsections/${subsectionId}/`, subsectionData);
+      const response = await axiosWithRetry.put(`/api/subsections/${subsectionId}/`, subsectionData, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1330,7 +1331,7 @@ export const subsectionsAPI = {
    */
   deleteSubsection: async (subsectionId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/subsections/${subsectionId}/`);
+      const response = await axiosWithRetry.delete(`/api/subsections/${subsectionId}/`, { baseURL: finalApiUrl });
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
