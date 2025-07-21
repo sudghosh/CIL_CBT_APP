@@ -1,3 +1,5 @@
+// WARNING: Always use finalApiUrl for all API calls. Never use API_URL directly in axiosWithRetry or any API client.
+// This prevents mixed content errors and enforces HTTPS for all requests.
 import axios from 'axios';
 import { handleAPIError, APIError, logError } from '../utils/errorHandler';
 import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
@@ -50,6 +52,13 @@ if (process.env.NODE_ENV === 'development' && !API_URL) {
   }
 } else {
   throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
+}
+
+// Runtime check: Prevent API_URL usage in axiosWithRetry calls
+function assertNoApiUrlUsage(url: string) {
+  if (url && typeof url === 'string' && url.includes(API_URL) && !url.includes(finalApiUrl)) {
+    throw new Error('[API] FATAL: API_URL used directly in axiosWithRetry call. Use finalApiUrl instead. URL: ' + url);
+  }
 }
 
 if (process.env.NODE_ENV !== 'test') {
@@ -1034,7 +1043,8 @@ export const papersAPI = {
       const url = params 
         ? `${finalApiUrl}/api/papers/?page=${params.page || 1}&page_size=${params.page_size || 10}` 
         : `${finalApiUrl}/api/papers/`;
-      
+      assertNoApiUrlUsage(url);
+      console.log('[API][DEBUG] axiosWithRetry.get baseURL:', finalApiUrl, 'url:', url);
       const response = await axiosWithRetry.get(url);
       return { data: response.data, success: true };
     } catch (error) {
