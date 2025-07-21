@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { axiosWithRetry } from '../utils/apiRetry';
+import { api } from '../services/api';
 import {
   Box,
   Typography,
@@ -222,17 +223,14 @@ export const QuestionManagement: React.FC = () => {
     // Advanced search parameters already formatted above
       
       const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/questions/admin/search?` +
-          new URLSearchParams(params),
-        {
-          headers: {
-            Authorization: token ? `Bearer ${token}` : '',
-          },
-        }
-      );
-      if (!response.ok) throw new Error(await response.text());
-      const data = await response.json();
+      // Use central api client for secure, robust URL handling
+      const response = await api.get('/questions/admin/search', {
+        params,
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+        },
+      });
+      const data = response.data;
       setSearchResults(data.items || data); // Support both paginated and array response
       setTotalQuestions(data.total || data.length || 0);    } catch (err: any) {
       console.error('Error in fetchQuestions:', err);
@@ -298,19 +296,10 @@ export const QuestionManagement: React.FC = () => {
     if (formData.section_id) {
       (async () => {
         try {
-          const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-          
-          // Use axiosWithRetry instead of fetch to ensure token is included
           console.log(`Fetching subsections for section ${formData.section_id}...`);
-          const response = await axiosWithRetry.get(
-            `${baseUrl}/api/sections/${formData.section_id}/subsections/`
-          );
-          
-          // Axios returns data directly in the response.data field
+          const response = await api.get(`/api/sections/${formData.section_id}/subsections/`);
           const data = response.data;
           console.log(`Successfully fetched subsections:`, data);
-          
-          // Ensure data is an array
           if (Array.isArray(data)) {
             setSubsections(data);
           } else {
