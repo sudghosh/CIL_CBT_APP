@@ -29,7 +29,7 @@ import {
 
 
 const API_URL = process.env.REACT_APP_API_URL;
-let finalApiUrl;
+let finalApiUrl: string;
 if (process.env.NODE_ENV === 'development' && !API_URL) {
     finalApiUrl = 'http://localhost:8000'; // Only fallback to HTTP localhost in dev
 } else if (API_URL) {
