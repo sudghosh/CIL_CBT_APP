@@ -27,7 +27,17 @@ import {
   PerformanceComparisonResponse
 } from '../components/charts_legacy/types';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const API_URL = process.env.REACT_APP_API_URL;
+let finalApiUrl;
+if (process.env.NODE_ENV === 'development' && !API_URL) {
+    finalApiUrl = 'http://localhost:8000'; // Only fallback to HTTP localhost in dev
+} else if (API_URL) {
+    // Ensure it's HTTPS if it's not already
+    finalApiUrl = API_URL.startsWith('https://') ? API_URL : `https://${API_URL.split('://')[1]}`;
+} else {
+    throw new Error("REACT_APP_API_URL environment variable is not set for production build.");
+}
 
 // Define types for API requests
 interface GoogleLoginRequest {
@@ -48,7 +58,7 @@ interface QuestionData {
 }
 
 export const api = axios.create({
-  baseURL: API_URL,
+  baseURL: finalApiUrl,
   headers: {
     'Content-Type': 'application/json',
   },
