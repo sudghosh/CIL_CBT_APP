@@ -51,9 +51,14 @@ if (process.env.NODE_ENV === 'development' && !API_URL) {
 } else {
   throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
 }
+
 if (process.env.NODE_ENV !== 'test') {
   // Log the resolved API URL for debugging
   console.log('[API] Using API base URL:', finalApiUrl);
+  // Enforce HTTPS at runtime in production
+  if (process.env.NODE_ENV === 'production' && !finalApiUrl.startsWith('https://')) {
+    throw new Error('[API] FATAL: API base URL is not HTTPS in production! Current value: ' + finalApiUrl + '. Please set REACT_APP_API_URL to a valid HTTPS endpoint and redeploy.');
+  }
 }
 
 // Define types for API requests
