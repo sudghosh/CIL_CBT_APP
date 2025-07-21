@@ -53,6 +53,7 @@ if (process.env.NODE_ENV === 'development' && !API_URL) {
 } else {
   throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
 }
+console.log(`[DEBUG][api.ts] finalApiUrl determined as: ${finalApiUrl}`); // <--- EXTREME DEBUG LOG ADDED
 
 // Runtime check: Prevent API_URL usage in axiosWithRetry calls
 function assertNoApiUrlUsage(url: string) {
