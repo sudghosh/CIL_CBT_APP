@@ -55,9 +55,14 @@ if (process.env.NODE_ENV === 'development' && !API_URL) {
 if (process.env.NODE_ENV !== 'test') {
   // Log the resolved API URL for debugging
   console.log('[API] Using API base URL:', finalApiUrl);
-  // Enforce HTTPS at runtime in production
-  if (process.env.NODE_ENV === 'production' && !finalApiUrl.startsWith('https://')) {
-    throw new Error('[API] FATAL: API base URL is not HTTPS in production! Current value: ' + finalApiUrl + '. Please set REACT_APP_API_URL to a valid HTTPS endpoint and redeploy.');
+  // Extra debug: log in production as well
+  if (process.env.NODE_ENV === 'production') {
+    // eslint-disable-next-line no-console
+    console.log('[API][PROD DEBUG] API base URL at runtime:', finalApiUrl);
+    // Enforce HTTPS at runtime in production
+    if (!finalApiUrl.startsWith('https://')) {
+      throw new Error('[API] FATAL: API base URL is not HTTPS in production! Current value: ' + finalApiUrl + '. Please set REACT_APP_API_URL to a valid HTTPS endpoint and redeploy.');
+    }
   }
 }
 
@@ -96,23 +101,17 @@ api.interceptors.request.use(
   (config) => {
     let token = localStorage.getItem('token');
     let tokenRestored = false;
-    
     // Auto-restore dev token if missing in development mode
     if (!token && isDevMode()) {
       console.log(`[API] No token found for request: ${config.method?.toUpperCase()} ${config.url}, restoring dev token`);
       token = DEV_TOKEN;
       localStorage.setItem('token', DEV_TOKEN);
       tokenRestored = true;
-      
-      // Dispatch event to notify about token restoration
       if (typeof window !== 'undefined') {
-        const event = new CustomEvent('dev-token-restored', { 
-          detail: { timestamp: Date.now() } 
-        });
+        const event = new CustomEvent('dev-token-restored', { detail: { timestamp: Date.now() } });
         window.dispatchEvent(event);
       }
     }
-    
     // Handle development token specially
     if (token && isDevToken(token) && isDevMode()) {
       if (tokenRestored) {
@@ -131,12 +130,17 @@ api.interceptors.request.use(
     } else {
       console.warn(`[API] No token found for API request to ${config.url}`);
     }
-    
-    // Log outgoing requests in development
-    if (isDevMode()) {
-      console.log(`[API] Request: ${config.method?.toUpperCase()} ${config.url}`, config);
+    // Log outgoing requests in development or production
+    if (isDevMode() || process.env.NODE_ENV === 'production') {
+      // eslint-disable-next-line no-console
+      console.log(`[API][DEBUG] Outgoing request:`, {
+        method: config.method,
+        url: config.url,
+        baseURL: config.baseURL,
+        fullUrl: (config.baseURL || '') + (config.url || ''),
+        headers: { ...config.headers, Authorization: '[REDACTED]' }
+      });
     }
-    
     return config;
   },
   (error) => {
