@@ -239,7 +239,7 @@ export const authAPI = {
   googleLogin: (tokenInfo: GoogleLoginRequest) => 
     // Use retry for Google login which is critical to the authentication flow
     axiosWithRetry.post('/auth/google-callback', tokenInfo, {
-      baseURL: API_URL,
+      baseURL: finalApiUrl,
       timeout: 12000, // 12 second timeout
       headers: {
         'Content-Type': 'application/json',
@@ -253,7 +253,7 @@ export const authAPI = {
   getCurrentUser: () => 
     // Use retry for current user which is critical to maintaining authentication
     axiosWithRetry.get('/auth/me', {
-      baseURL: API_URL,
+      baseURL: finalApiUrl,
       timeout: 8000, // 8 second timeout
       headers: {
         'Content-Type': 'application/json',
@@ -267,7 +267,7 @@ export const authAPI = {
   developmentLogin: () => 
     // Call the backend dev-login endpoint to get a real JWT token
     axiosWithRetry.post('/auth/dev-login', {}, {
-      baseURL: API_URL,
+      baseURL: finalApiUrl,
       timeout: 8000, // 8 second timeout
       headers: {
         'Content-Type': 'application/json'
@@ -1006,8 +1006,8 @@ export const papersAPI = {
     try {
       // First try to fetch papers from the API
       const url = params 
-        ? `${API_URL}/api/papers/?page=${params.page || 1}&page_size=${params.page_size || 10}` 
-        : `${API_URL}/api/papers/`;
+        ? `${finalApiUrl}/api/papers/?page=${params.page || 1}&page_size=${params.page_size || 10}` 
+        : `${finalApiUrl}/api/papers/`;
       
       const response = await axiosWithRetry.get(url);
       return { data: response.data, success: true };
@@ -1061,7 +1061,7 @@ export const papersAPI = {
    */
   createPaper: async (paperData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${API_URL}/api/papers/`, paperData);
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/`, paperData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1077,7 +1077,7 @@ export const papersAPI = {
    */
   updatePaper: async (paperId: number, paperData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${API_URL}/api/papers/${paperId}/`, paperData);
+      const response = await axiosWithRetry.put(`${finalApiUrl}/api/papers/${paperId}/`, paperData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1092,7 +1092,7 @@ export const papersAPI = {
    */
   deletePaper: async (paperId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${API_URL}/api/papers/${paperId}/`);
+      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/papers/${paperId}/`);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1107,7 +1107,7 @@ export const papersAPI = {
    */  activatePaper: async (paperId: number) => {
     try {
       // Using the improved axiosWithRetry that properly includes auth tokens
-      const response = await axiosWithRetry.post(`${API_URL}/api/papers/${paperId}/activate/`, {});
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/${paperId}/activate/`, {});
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1122,7 +1122,7 @@ export const papersAPI = {
    */  deactivatePaper: async (paperId: number) => {
     try {
       // Using the improved axiosWithRetry that properly includes auth tokens
-      const response = await axiosWithRetry.post(`${API_URL}/api/papers/${paperId}/deactivate/`, {});
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/${paperId}/deactivate/`, {});
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1136,7 +1136,7 @@ export const papersAPI = {
    */
   createSamplePaper: async () => {
     try {
-      const response = await axiosWithRetry.post(`${API_URL}/api/papers/create-sample/`, {});
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/papers/create-sample/`, {});
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1156,7 +1156,7 @@ export const sectionsAPI = {
    */
   getSectionsByPaperId: async (paperId: number) => {
     try {
-      const response = await axiosWithRetry.get(`${API_URL}/api/papers/${paperId}/sections/`);
+      const response = await axiosWithRetry.get(`${finalApiUrl}/api/papers/${paperId}/sections/`);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1184,7 +1184,7 @@ export const sectionsAPI = {
    */
   createSection: async (sectionData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${API_URL}/api/sections/`, sectionData);
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/sections/`, sectionData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1200,7 +1200,7 @@ export const sectionsAPI = {
    */
   updateSection: async (sectionId: number, sectionData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${API_URL}/api/sections/${sectionId}/`, sectionData);
+      const response = await axiosWithRetry.put(`${finalApiUrl}/api/sections/${sectionId}/`, sectionData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1215,7 +1215,7 @@ export const sectionsAPI = {
    */
   deleteSection: async (sectionId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${API_URL}/api/sections/${sectionId}/`);
+      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/sections/${sectionId}/`);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1235,7 +1235,7 @@ export const subsectionsAPI = {
    */
   getSubsections: async (sectionId: number) => {
     try {
-      const response = await axiosWithRetry.get(`${API_URL}/api/sections/${sectionId}/subsections/`);
+      const response = await axiosWithRetry.get(`${finalApiUrl}/api/sections/${sectionId}/subsections/`);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1263,7 +1263,7 @@ export const subsectionsAPI = {
    */
   createSubsection: async (subsectionData: any) => {
     try {
-      const response = await axiosWithRetry.post(`${API_URL}/api/subsections/`, subsectionData);
+      const response = await axiosWithRetry.post(`${finalApiUrl}/api/subsections/`, subsectionData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1279,7 +1279,7 @@ export const subsectionsAPI = {
    */
   updateSubsection: async (subsectionId: number, subsectionData: any) => {
     try {
-      const response = await axiosWithRetry.put(`${API_URL}/api/subsections/${subsectionId}/`, subsectionData);
+      const response = await axiosWithRetry.put(`${finalApiUrl}/api/subsections/${subsectionId}/`, subsectionData);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
@@ -1294,7 +1294,7 @@ export const subsectionsAPI = {
    */
   deleteSubsection: async (subsectionId: number) => {
     try {
-      const response = await axiosWithRetry.delete(`${API_URL}/api/subsections/${subsectionId}/`);
+      const response = await axiosWithRetry.delete(`${finalApiUrl}/api/subsections/${subsectionId}/`);
       return { data: response.data, success: true };
     } catch (error) {
       const apiError = handleAPIError(error as Error);
