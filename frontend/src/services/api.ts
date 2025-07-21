@@ -28,15 +28,32 @@ import {
 } from '../components/charts_legacy/types';
 
 
-const API_URL = process.env.REACT_APP_API_URL;
+const API_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.trim() : '';
 let finalApiUrl: string;
 if (process.env.NODE_ENV === 'development' && !API_URL) {
-    finalApiUrl = 'http://localhost:8000'; // Only fallback to HTTP localhost in dev
+  finalApiUrl = 'http://localhost:8000'; // Only fallback to HTTP localhost in dev
 } else if (API_URL) {
-    // Ensure it's HTTPS if it's not already
-    finalApiUrl = API_URL.startsWith('https://') ? API_URL : `https://${API_URL.split('://')[1]}`;
+  // Robustly enforce HTTPS and handle all cases
+  if (API_URL.startsWith('https://')) {
+    finalApiUrl = API_URL;
+  } else if (API_URL.startsWith('http://')) {
+    finalApiUrl = 'https://' + API_URL.substring('http://'.length);
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[API] REACT_APP_API_URL is set as HTTP in production. Forcing HTTPS:', finalApiUrl);
+    }
+  } else {
+    // No protocol, assume HTTPS
+    finalApiUrl = 'https://' + API_URL;
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[API] REACT_APP_API_URL has no protocol. Assuming HTTPS:', finalApiUrl);
+    }
+  }
 } else {
-    throw new Error("REACT_APP_API_URL environment variable is not set for production build.");
+  throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
+}
+if (process.env.NODE_ENV !== 'test') {
+  // Log the resolved API URL for debugging
+  console.log('[API] Using API base URL:', finalApiUrl);
 }
 
 // Define types for API requests
