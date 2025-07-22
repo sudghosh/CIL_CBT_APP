@@ -9,6 +9,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 from .middleware import RequestLoggingMiddleware
 import logging
+from fastapi.responses import RedirectResponse
 import os
 import traceback
 from datetime import datetime
@@ -256,6 +257,20 @@ async def options_api_paper_deactivate(paper_id: int):
     }
 
 # Add OPTIONS handlers for the /api/sections routes to handle CORS preflight requests
+###############################################################
+# Utility: Build redirect URL using request's scheme and host
+###############################################################
+def build_redirect_url(request: Request, path: str = None, query: str = None):
+    """
+    Dynamically build a redirect URL using the incoming request's scheme and host.
+    Supports both development (http) and production (https via x-forwarded-proto).
+    """
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("host", request.url.hostname)
+    base_url = f"{scheme}://{host}"
+    url_path = path if path else request.url.path
+    url_query = f"?{query}" if query else (f"?{request.url.query}" if request.url.query else "")
+    return f"{base_url}{url_path}{url_query}"
 @app.options("/api/sections/{section_id}/subsections/", include_in_schema=False)
 async def options_api_sections_subsections():
     allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
