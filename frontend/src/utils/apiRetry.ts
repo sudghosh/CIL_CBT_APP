@@ -82,6 +82,11 @@ const createConfiguredAxios = () => {
   } catch (e) {
     finalApiUrl = '';
   }
+  // Log the resolved finalApiUrl for debugging in all environments
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log(`[ApiRetry][DEBUG] Resolved finalApiUrl: ${finalApiUrl} (NODE_ENV: ${process.env.NODE_ENV})`);
+  }
   const instance = axios.create({
     baseURL: finalApiUrl,
     headers: {
