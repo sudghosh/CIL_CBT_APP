@@ -4,7 +4,7 @@ import {
   ApiKeyRetrievalOptions, 
   ApiKeyRetrievalResult 
 } from '../types/apiKey.js';
-import { api } from './api';
+import axiosInstance from './api';
 
 class ApiKeyService {
   private keyCache: Map<ApiKeyType, { key: string; timestamp: number }> = new Map();
@@ -95,7 +95,7 @@ class ApiKeyService {
    */
   async isApiKeyAvailable(keyType: ApiKeyType): Promise<boolean> {
     try {
-      const response = await api.get(`/ai/api-key/${keyType}/status`);
+      const response = await axiosInstance.get(`/ai/api-key/${keyType}/status`);
       return response.data?.available || false;
     } catch (error) {
       console.warn(`Failed to check API key availability for ${keyType}:`, error);
@@ -108,7 +108,7 @@ class ApiKeyService {
    */
   async getAvailableKeyTypes(): Promise<ApiKeyType[]> {
     try {
-      const response = await api.get('/ai/api-key-status');
+      const response = await axiosInstance.get('/ai/api-key-status');
       
       if (response.data?.availability) {
         const availability = response.data.availability;
@@ -183,7 +183,7 @@ class ApiKeyService {
   private async fetchFromBackend(keyType: ApiKeyType): Promise<string | null> {
     try {
       // Use the configured axios instance that includes authentication
-      const response = await api.get(`/admin/api-keys/type/${keyType}/key`);
+      const response = await axiosInstance.get(`/admin/api-keys/type/${keyType}/key`);
       
       if (response.data && response.data.key) {
         return response.data.key;

@@ -1,4 +1,4 @@
-import { api } from './api';
+import axiosInstance from './api';
 import { logError } from '../utils/errorHandler';
 import { DEV_TOKEN, isDevToken, isDevMode } from '../utils/devMode';
 
@@ -190,7 +190,7 @@ export class TokenRefreshService {
     
     // Strategy 1: Use refresh endpoint if available
     try {
-      const response = await api.post('/auth/refresh');
+      const response = await axiosInstance.post('/auth/refresh');
       return response.data;
     } catch (error) {
       console.log('[TokenRefresh] Refresh endpoint not available, trying alternative');
@@ -198,7 +198,7 @@ export class TokenRefreshService {
 
     // Strategy 2: Re-validate current token
     try {
-      const response = await api.get('/auth/me');
+      const response = await axiosInstance.get('/auth/me');
       if (response.data) {
         // Current token is still valid, return it
         const currentToken = localStorage.getItem('access_token') || localStorage.getItem('token');

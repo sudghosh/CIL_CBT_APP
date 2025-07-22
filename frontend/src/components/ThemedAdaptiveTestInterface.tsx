@@ -22,7 +22,7 @@ import {
   styled
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { testsAPI, api } from '../services/api';
+import { testsAPI, axiosInstance } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
 import { shuffleArray, WithOriginalValues } from '../utils/shuffleUtils';
 
@@ -354,7 +354,7 @@ export const ThemedAdaptiveTestInterface = ({
       setError(null);
       
       console.log('[AdaptiveTest] Fetching next question for attempt:', attemptId);
-      const response = await api.get(`/tests/attempts/${attemptId}/next-question`);
+      const response = await axiosInstance.get(`/tests/attempts/${attemptId}/next-question`);
       
       console.log('[AdaptiveTest] Response received:', response.data);
       

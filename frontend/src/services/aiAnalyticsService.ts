@@ -1,6 +1,6 @@
 import { ApiKeyType, ApiKeyRetrievalOptions } from '../types/apiKey';
 import { apiKeyService } from './apiKeyService';
-import { api } from './api';
+import axiosInstance from './api';
 
 export interface PerformanceDataPoint {
   date: string;
@@ -53,7 +53,7 @@ class AIAnalyticsService {
     try {
       // Step 1: Try backend AI service first
       console.log('🔄 Step 1: Trying backend AI service...');
-      const response = await api.post('/ai/analyze-trends', {
+      const response = await axiosInstance.post('/ai/analyze-trends', {
         timeframe: request.timeframe,
         analysisType: request.analysisType,
         performanceData: request.performanceData
@@ -160,7 +160,7 @@ class AIAnalyticsService {
    */
   async checkAIAvailability(): Promise<boolean> {
     try {
-      const response = await api.get('/ai/api-key-status');
+      const response = await axiosInstance.get('/ai/api-key-status');
       return response.data.has_any_key || false;
     } catch (error) {
       console.error('Failed to check AI availability:', error);
