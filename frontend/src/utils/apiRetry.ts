@@ -72,7 +72,18 @@ export async function requestWithRetry<T>(
  * This ensures headers like Authorization are consistently applied
  */
 const createConfiguredAxios = () => {
+  // Import finalApiUrl from api.ts
+  // Use require to avoid circular import issues
+  let finalApiUrl = '';
+  try {
+    // Dynamically import finalApiUrl from api.ts
+    // @ts-ignore
+    finalApiUrl = require('../services/api').finalApiUrl;
+  } catch (e) {
+    finalApiUrl = '';
+  }
   const instance = axios.create({
+    baseURL: finalApiUrl,
     headers: {
       'Content-Type': 'application/json',
     },
