@@ -28,7 +28,7 @@ import {
 import { Add, Edit, Delete, Refresh } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { ApiKey, ApiKeyForm, API_KEY_TYPES } from "../types/apiKey";
-import { api } from "../services/api";
+import { axiosInstance } from "../services/api";
 
 async function fetchApiKeys(
   setApiKeys: React.Dispatch<React.SetStateAction<ApiKey[]>>,
@@ -39,7 +39,7 @@ async function fetchApiKeys(
   setError(""); // Clear any previous errors
   
   try {
-    const response = await api.get('/admin/api-keys');
+    const response = await axiosInstance.get('/admin/api-keys');
     
     // Ensure data is an array or extract array from response
     let processedApiKeys: ApiKey[] = [];
@@ -159,9 +159,9 @@ export default function ApiKeyAdminPage() {
         : form;
       
       if (editKey) {
-        await api.put(`/admin/api-keys/${editKey.id}`, body);
+        await axiosInstance.put(`/admin/api-keys/${editKey.id}`, body);
       } else {
-        await api.post('/admin/api-keys', body);
+        await axiosInstance.post('/admin/api-keys', body);
       }
       
       fetchApiKeys(setApiKeys, setLoading, setError);
@@ -186,7 +186,7 @@ export default function ApiKeyAdminPage() {
     setSubmitting(true);
     setError("");
     try {
-      await api.delete(`/admin/api-keys/${id}`);
+      await axiosInstance.delete(`/admin/api-keys/${id}`);
       fetchApiKeys(setApiKeys, setLoading, setError);
     } catch (error: any) {
       if (error.response?.status === 401) {
