@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { axiosWithRetry } from '../utils/apiRetry';
-import { api } from '../services/api';
+import axiosInstance from '../services/api';
 import {
   Box,
   Typography,
@@ -224,7 +224,7 @@ export const QuestionManagement: React.FC = () => {
       
       const token = localStorage.getItem('token');
       // Use central api client for secure, robust URL handling
-      const response = await api.get('/questions/admin/search', {
+      const response = await axiosInstance.get('/questions/admin/search', {
         params,
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
@@ -297,7 +297,7 @@ export const QuestionManagement: React.FC = () => {
       (async () => {
         try {
           console.log(`Fetching subsections for section ${formData.section_id}...`);
-          const response = await api.get(`/api/sections/${formData.section_id}/subsections/`);
+          const response = await axiosInstance.get(`/api/sections/${formData.section_id}/subsections/`);
           const data = response.data;
           console.log(`Successfully fetched subsections:`, data);
           if (Array.isArray(data)) {
