@@ -28,8 +28,7 @@ import {
   RecommendationsResponse,
   PerformanceComparisonResponse
 } from '../components/charts_legacy/types';
-
-
+// ...existing code...
 const API_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.trim() : '';
 let finalApiUrl: string;
 if (process.env.NODE_ENV === 'development' && !API_URL) {
@@ -94,7 +93,7 @@ interface QuestionData {
   explanation?: string;
 }
 
-export const api = axios.create({
+export const axiosInstance = axios.create({
   baseURL: finalApiUrl,
   headers: {
     'Content-Type': 'application/json',
@@ -107,7 +106,7 @@ export const api = axios.create({
 });
 
 // Add token to requests if it exists
-api.interceptors.request.use(
+axiosInstance.interceptors.request.use(
   (config) => {
     let token = localStorage.getItem('token');
     let tokenRestored = false;
@@ -160,7 +159,7 @@ api.interceptors.request.use(
 );
 
 // Add error handling interceptor with detailed error messages
-api.interceptors.response.use(
+axiosInstance.interceptors.response.use(
   (response) => {
     // Log successful responses in development
     if (isDevMode()) {
@@ -313,13 +312,13 @@ export const authAPI = {
       retryDelay: 500 // Start with 500ms delay
     }),
     
-  getUsers: () => api.get('/auth/users'),
-  whitelistEmail: (email: string) => api.post('/admin/allowed-emails', { email: email }),
-  getAllowedEmails: () => api.get('/admin/allowed-emails'),
-  deleteAllowedEmail: (emailId: number) => api.delete(`/admin/allowed-emails/${emailId}`),
+  getUsers: () => axiosInstance.get('/auth/users'),
+  whitelistEmail: (email: string) => axiosInstance.post('/admin/allowed-emails', { email: email }),
+  getAllowedEmails: () => axiosInstance.get('/admin/allowed-emails'),
+  deleteAllowedEmail: (emailId: number) => axiosInstance.delete(`/admin/allowed-emails/${emailId}`),
   updateUserStatus: (userId: number, isActive: boolean) => 
-    api.put(`/auth/users/${userId}/status`, { is_active: isActive }),updateUserRole: (userId: number, role: string) =>
-    api.put(`/auth/users/${userId}/role`, { role }),
+    axiosInstance.put(`/auth/users/${userId}/status`, { is_active: isActive }),updateUserRole: (userId: number, role: string) =>
+    axiosInstance.put(`/auth/users/${userId}/role`, { role }),
   // Health check for API with caching to prevent excessive requests
   healthCheck: () => {
     // Get current timestamp
@@ -337,7 +336,7 @@ export const authAPI = {
     sessionStorage.setItem('lastHealthCheck', now.toString());
     
     // Make actual API call
-    return api.get('/health').then(response => {
+    return axiosInstance.get('/health').then(response => {
       sessionStorage.setItem('healthCheckResult', JSON.stringify(response.data));
       return response;
     });
@@ -347,9 +346,9 @@ export const authAPI = {
 // Questions API
 export const questionsAPI = {
   getQuestions: (params?: { paper_id?: number; section_id?: number; page?: number; page_size?: number }) =>
-    api.get('/questions', { params }),
-  getQuestion: (id: number) => api.get(`/questions/${id}`),
-  createQuestion: (data: QuestionData) => api.post('/questions', data),  uploadQuestions: (file: File) => {
+    axiosInstance.get('/questions', { params }),
+  getQuestion: (id: number) => axiosInstance.get(`/questions/${id}`),
+  createQuestion: (data: QuestionData) => axiosInstance.post('/questions', data),  uploadQuestions: (file: File) => {
     console.log(`Preparing to upload file: ${file.name}, size: ${file.size}, type: ${file.type}`);
     
     // Additional validation to prevent empty files
@@ -390,7 +389,7 @@ export const questionsAPI = {
     });
     
     // Set specific options for file uploads
-    return api.post('/questions/upload', formData, {
+    return axiosInstance.post('/questions/upload', formData, {
       headers: { 
         // Let the browser set the Content-Type with boundary automatically
         // 'Content-Type' will be set automatically with the correct boundary by the browser
@@ -476,11 +475,11 @@ export const questionsAPI = {
       throw error; // Re-throw to maintain error chain
     });
   },
-  updateQuestion: (id: number, data: any) => api.put(`/questions/${id}`, data),
-  deactivateQuestion: (id: number) => api.put(`/questions/${id}/deactivate`),
+  updateQuestion: (id: number, data: any) => axiosInstance.put(`/questions/${id}`, data),
+  deactivateQuestion: (id: number) => axiosInstance.put(`/questions/${id}/deactivate`),
   deleteQuestion: (id: number) => {
     console.log(`[DEBUG][API] Initiating DELETE request for question ID: ${id}`);
-    return api.delete(`/questions/${id}`)
+    return axiosInstance.delete(`/questions/${id}`)
       .then(response => {
         console.log(`[DEBUG][API] DELETE question ${id} succeeded:`, response);
         return response;
@@ -497,12 +496,12 @@ export const questionsAPI = {
       });
   },
   downloadAllQuestions: () =>
-    api.get('/questions/admin/download-all', { responseType: 'blob' }),
+    axiosInstance.get('/questions/admin/download-all', { responseType: 'blob' }),
 };
 
 // Tests API
 export const testsAPI = {
-  getTemplates: () => api.get('/tests/templates'),
+  getTemplates: () => axiosInstance.get('/tests/templates'),
   
   createTemplate: (data: CreateTestTemplateRequest) => {
     console.log('Creating template with data:', JSON.stringify(data, null, 2));
@@ -538,7 +537,7 @@ export const testsAPI = {
     // For debugging
     console.log('Sending normalized template data:', JSON.stringify(normalizedData, null, 2));
     
-    return api.post('/tests/templates', normalizedData)
+    return axiosInstance.post('/tests/templates', normalizedData)
       .then(response => {
         console.log('Template creation successful. Response:', JSON.stringify(response.data, null, 2));
         return response;
@@ -612,7 +611,7 @@ export const testsAPI = {
       }
     }
     
-    return api.post('/tests/start', payload)
+    return axiosInstance.post('/tests/start', payload)
     .then(response => {
       console.log('Test started successfully. Response:', JSON.stringify(response.data, null, 2));
       return response;
@@ -625,7 +624,7 @@ export const testsAPI = {
 
   abandonTest: (attemptId: number) => {
     console.log('Abandoning test with attempt ID:', attemptId);
-    return api.post(`/tests/abandon/${attemptId}`)
+    return axiosInstance.post(`/tests/abandon/${attemptId}`)
       .then(response => {
         console.log('Test abandoned successfully. Response:', JSON.stringify(response.data, null, 2));
         return response;
@@ -644,7 +643,7 @@ export const testsAPI = {
       console.log(`[API] Using fallback method to count questions for paper=${paperId}, section=${sectionId || 'all'}`);
         try {
         // Get all questions for this paper - using maximum allowed page size
-        const response = await api.get('/questions', { 
+      const response = await axiosInstance.get('/questions', { 
           params: { 
             paper_id: paperId,
             section_id: sectionId,
@@ -720,7 +719,7 @@ export const testsAPI = {
     
     console.log(`[API] Fetching available count with params:`, params);
     
-    return api.get(`/questions/available-count`, { params })
+    return axiosInstance.get(`/questions/available-count`, { params })
     .then(response => {
       if (response?.data?.count !== undefined) {
         console.log(`[API] Available count: ${response.data.count} for paper: ${paperId}, section: ${sectionId || 'all'}`);
@@ -748,13 +747,13 @@ export const testsAPI = {
     });
   },
   submitAnswer: (attemptId: number, data: any) =>
-    api.post(`/tests/submit/${attemptId}/answer`, data),
-  finishTest: (attemptId: number) => api.post(`/tests/finish/${attemptId}`),
-  getAttempts: () => api.get('/tests/attempts'),
-  getQuestions: (attemptId: number) => api.get(`/tests/questions/${attemptId}`),
-  getAttemptDetails: (attemptId: number) => api.get(`/tests/attempts/${attemptId}/details`),
+    axiosInstance.post(`/tests/submit/${attemptId}/answer`, data),
+  finishTest: (attemptId: number) => axiosInstance.post(`/tests/finish/${attemptId}`),
+  getAttempts: () => axiosInstance.get('/tests/attempts'),
+  getQuestions: (attemptId: number) => axiosInstance.get(`/tests/questions/${attemptId}`),
+  getAttemptDetails: (attemptId: number) => axiosInstance.get(`/tests/attempts/${attemptId}/details`),
   toggleMarkForReview: (attemptId: number, questionId: number) =>
-    api.post(`/tests/${attemptId}/mark-review/${questionId}`),
+    axiosInstance.post(`/tests/${attemptId}/mark-review/${questionId}`),
   /**
    * Submit answer and get the next question in an adaptive test
    * @param attemptId - Test attempt ID
@@ -770,7 +769,7 @@ export const testsAPI = {
     timeTakenSeconds: number
   ) => {
     console.log(`Submitting answer for question ${questionId} and getting next question`);
-    return api.post(`/tests/${attemptId}/next_question`, {
+    return axiosInstance.post(`/tests/${attemptId}/next_question`, {
       question_id: questionId,
       selected_option_id: selectedOptionId,
       time_taken_seconds: timeTakenSeconds
@@ -817,7 +816,7 @@ export const performanceAPI = {
    */
   getOverallPerformance: () => {
     const endpoint = '/performance/overall';
-    return api.get(endpoint)
+    return axiosInstance.get(endpoint)
       .then(response => {
         console.log('Overall performance retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -845,7 +844,7 @@ export const performanceAPI = {
     if (filters?.paperId) params.paper_id = filters.paperId;
     if (filters?.sectionId) params.section_id = filters.sectionId;
     if (filters?.difficulty) params.difficulty = filters.difficulty;
-    return api.get(endpoint, { params })
+    return axiosInstance.get(endpoint, { params })
       .then(response => {
         console.log('Topic performance retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -863,7 +862,7 @@ export const performanceAPI = {
    */
   getDifficultyPerformance: () => {
     const endpoint = '/performance/difficulty';
-    return api.get(endpoint)
+    return axiosInstance.get(endpoint)
       .then(response => {
         console.log('Difficulty performance retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -891,7 +890,7 @@ export const performanceAPI = {
     if (filters?.paperId) params.paper_id = filters.paperId;
     if (filters?.difficulty) params.difficulty = filters.difficulty;
     if (filters?.timePeriod) params.time_period = filters.timePeriod;
-    return api.get(endpoint, { params })
+    return axiosInstance.get(endpoint, { params })
       .then(response => {
         console.log('Time performance retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -914,7 +913,7 @@ export const performanceAPI = {
     const params: any = {};
     if (filters?.timePeriod) params.time_period = filters.timePeriod;
     
-    return api.get<DifficultyTrendsResponse>('/performance/difficulty-trends', { params })
+    return axiosInstance.get<DifficultyTrendsResponse>('/performance/difficulty-trends', { params })
       .then(response => {
         console.log('Difficulty trends retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -940,7 +939,7 @@ export const performanceAPI = {
    * Shows how a user's mastery of different topics has evolved over time
    * @returns Promise with topic mastery data
    */  getTopicMastery: (): Promise<TopicMasteryResponse> => {
-    return api.get<TopicMasteryResponse>('/performance/topic-mastery')
+    return axiosInstance.get<TopicMasteryResponse>('/performance/topic-mastery')
       .then(response => {
         console.log('Topic mastery retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -970,7 +969,7 @@ export const performanceAPI = {
    * @param maxRecommendations - Maximum number of recommendations to return
    * @returns Promise with recommendations data
    */  getRecommendations: (maxRecommendations: number = 5): Promise<RecommendationsResponse> => {
-    return api.get<RecommendationsResponse>('/performance/recommendations', { params: { max_recommendations: maxRecommendations } })
+    return axiosInstance.get<RecommendationsResponse>('/performance/recommendations', { params: { max_recommendations: maxRecommendations } })
       .then(response => {
         console.log('Recommendations retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -1001,7 +1000,7 @@ export const performanceAPI = {
    * Compares user's performance against overall averages
    * @returns Promise with comparison data
    */  getPerformanceComparison: (): Promise<PerformanceComparisonResponse> => {
-    return api.get<PerformanceComparisonResponse>('/performance/performance-comparison')
+    return axiosInstance.get<PerformanceComparisonResponse>('/performance/performance-comparison')
       .then(response => {
         console.log('Performance comparison retrieved:', JSON.stringify(response.data, null, 2));
         return response.data;
@@ -1344,4 +1343,4 @@ export const subsectionsAPI = {
 
 
 // Default export for API client
-export default api;
+export default axiosInstance;
