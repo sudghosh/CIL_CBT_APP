@@ -29,30 +29,40 @@ import {
   PerformanceComparisonResponse
 } from '../components/charts_legacy/types';
 // ...existing code...
+
+
 const API_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.trim() : '';
-let finalApiUrl: string;
-if (process.env.NODE_ENV === 'development' && !API_URL) {
-  finalApiUrl = 'http://localhost:8000'; // Only fallback to HTTP localhost in dev
-} else if (API_URL) {
-  // Robustly enforce HTTPS and handle all cases
+let finalApiUrl: string = '';
+if (process.env.NODE_ENV === 'development') {
+  // Use HTTP for localhost in development
+  if (API_URL.startsWith('http://localhost')) {
+    finalApiUrl = API_URL;
+  } else if (API_URL.startsWith('https://localhost')) {
+    // If someone sets HTTPS for localhost, fallback to HTTP
+    finalApiUrl = 'http://localhost:8000';
+    console.warn('[API] HTTPS for localhost is not supported in development. Using HTTP:', finalApiUrl);
+  } else if (API_URL) {
+    finalApiUrl = API_URL;
+  } else {
+    finalApiUrl = 'http://localhost:8000';
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  // Always enforce HTTPS in production
   if (API_URL.startsWith('https://')) {
     finalApiUrl = API_URL;
   } else if (API_URL.startsWith('http://')) {
     finalApiUrl = 'https://' + API_URL.substring('http://'.length);
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('[API] REACT_APP_API_URL is set as HTTP in production. Forcing HTTPS:', finalApiUrl);
-    }
-  } else {
-    // No protocol, assume HTTPS
+    console.warn('[API] REACT_APP_API_URL is set as HTTP in production. Forcing HTTPS:', finalApiUrl);
+  } else if (API_URL) {
     finalApiUrl = 'https://' + API_URL;
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('[API] REACT_APP_API_URL has no protocol. Assuming HTTPS:', finalApiUrl);
-    }
+    console.warn('[API] REACT_APP_API_URL has no protocol. Assuming HTTPS:', finalApiUrl);
+  } else {
+    throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
   }
-} else {
-  throw new Error('REACT_APP_API_URL environment variable is not set for production build.');
 }
-console.log(`[DEBUG][api.ts] finalApiUrl determined as: ${finalApiUrl}`); // <--- EXTREME DEBUG LOG ADDED
+
+// Now finalApiUrl is always assigned before use
+console.log(`[DEBUG][api.ts] finalApiUrl determined as: ${finalApiUrl}`);
 
 // Runtime check: Prevent API_URL usage in axiosWithRetry calls
 function assertNoApiUrlUsage(url: string) {
