@@ -187,6 +187,7 @@ api_router = APIRouter(prefix="/api")
 api_router.include_router(papers.router)  # Include papers router under /api/papers
 api_router.include_router(sections.router)  # Include sections router under /api/sections
 api_router.include_router(subsections.router)  # Include subsections router under /api/subsections
+api_router.include_router(questions.router)  # Include questions router under /api/questions
 app.include_router(api_router)  # Include the api router in main app
 
 # Include the sections and subsections routers directly for backward compatibility
@@ -267,6 +268,9 @@ def build_redirect_url(request: Request, path: str = None, query: str = None):
     """
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("host", request.url.hostname)
+    # Force scheme to http for localhost in development
+    if host and ("localhost" in host or host.startswith("127.0.0.1")):
+        scheme = "http"
     base_url = f"{scheme}://{host}"
     url_path = path if path else request.url.path
     url_query = f"?{query}" if query else (f"?{request.url.query}" if request.url.query else "")

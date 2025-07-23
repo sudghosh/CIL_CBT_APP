@@ -60,16 +60,27 @@ logger = logging.getLogger(__name__)
 # Create rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-router = APIRouter(prefix="/questions", tags=["questions"])
+router = APIRouter(prefix="", tags=["questions"])
 
 logger.info("[QUESTIONS ROUTER] questions.py loaded and router registered.")
+
+import os
+def get_dynamic_origin():
+    env = os.environ.get("ENV", "development")
+    cors_origins_env = os.environ.get("CORS_ORIGINS")
+    if env == "development":
+        return "http://localhost:3000"
+    if cors_origins_env:
+        return cors_origins_env.split(",")[0].strip()
+    return "*"
 
 @router.options("/", include_in_schema=False)
 async def options_questions():
     """Handle OPTIONS requests for CORS preflight"""
+    allow_origin = get_dynamic_origin()
     return {
         "Allow": "POST, GET, OPTIONS",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PATCH, PUT, DELETE",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -78,9 +89,10 @@ async def options_questions():
 @router.options("/{question_id}", include_in_schema=False)
 async def options_question_by_id():
     """Handle OPTIONS requests for specific question endpoints"""
+    allow_origin = get_dynamic_origin()
     return {
         "Allow": "GET, PUT, DELETE, OPTIONS, PATCH",
-        "Access-Control-Allow-Origin": "*", 
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS, PATCH",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600"
@@ -156,7 +168,7 @@ class QuestionRead(BaseModel):
         orm_mode = True
 
 @limiter.limit("20/minute")
-@router.post("/", response_model=QuestionResponse)
+@router.post("/questions", response_model=QuestionResponse)
 async def create_question(
     request: Request,
     question: QuestionBase,
@@ -229,7 +241,7 @@ async def create_question(
             detail="Internal server error"
         )
 
-@router.get("/", response_model=Dict[str, object])
+@router.get("/questions", response_model=Dict[str, object])
 @limiter.limit("30/minute")
 async def get_questions(
     request: Request,
@@ -321,7 +333,7 @@ async def get_questions(
             detail="Error retrieving questions"
         )
 
-@router.get("/{question_id}", response_model=QuestionResponse)
+@router.get("/questions/{question_id}", response_model=QuestionResponse)
 @limiter.limit("30/minute")
 async def get_question(
     request: Request,
@@ -351,7 +363,7 @@ async def get_question(
             detail="Error retrieving question"
         )
 
-@router.post("/upload", dependencies=[Depends(verify_admin)])
+@router.post("/questions/upload", dependencies=[Depends(verify_admin)])
 async def upload_questions(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -529,7 +541,7 @@ async def upload_questions(
                 detail=f"Error processing upload: {str(e)}"
             )
 
-@router.get("/search")
+@router.get("/questions/search")
 @limiter.limit("20/minute")
 async def search_questions(
     request: Request,
@@ -559,7 +571,7 @@ async def search_questions(
 class QuestionUpdate(QuestionBase):
     pass
 
-@router.put("/{question_id}", response_model=QuestionResponse)
+@router.put("/questions/{question_id}", response_model=QuestionResponse)
 @limiter.limit("10/minute")
 async def update_question(
     request: Request,
@@ -629,7 +641,7 @@ async def update_question(
             detail="Error updating question"
         )
 
-@router.get("/admin/search", response_model=List[QuestionRead], dependencies=[Depends(verify_admin)])
+@router.get("/questions/admin/search", response_model=List[QuestionRead], dependencies=[Depends(verify_admin)])
 @limiter.limit("20/minute")
 async def admin_search_questions(
     request: Request,
@@ -697,7 +709,7 @@ async def admin_search_questions(
         ))
     return out
 
-@router.get("/admin/download-all", dependencies=[Depends(verify_admin)])
+@router.get("/questions/admin/download-all", dependencies=[Depends(verify_admin)])
 @limiter.limit("5/minute")
 async def download_all_questions(
     request: Request,
@@ -743,7 +755,7 @@ async def download_all_questions(
     }
     return StreamingResponse(output, headers=headers, media_type='text/csv')
 
-@router.delete("/{question_id}")
+@router.delete("/questions/{question_id}")
 async def delete_question(
     question_id: int,
     db: Session = Depends(get_db),
@@ -808,7 +820,7 @@ async def delete_question(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/available-count")
+@router.get("/questions/available-count")
 async def get_available_question_count(
     paper_id: Optional[int] = None,
     section_id: Optional[int] = None,
@@ -883,7 +895,7 @@ async def get_available_question_count(
             detail="Failed to get available question count"
         )
 
-@router.post("/activate/{paper_id}/{section_id}")
+@router.post("/questions/activate/{paper_id}/{section_id}")
 async def activate_questions(
     paper_id: int,
     section_id: int,
