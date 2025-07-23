@@ -271,6 +271,18 @@ def build_redirect_url(request: Request, path: str = None, query: str = None):
     url_path = path if path else request.url.path
     url_query = f"?{query}" if query else (f"?{request.url.query}" if request.url.query else "")
     return f"{base_url}{url_path}{url_query}"
+
+# --- PATCH: Add root-level /questions redirect handler ---
+from fastapi.responses import RedirectResponse
+from fastapi import Request
+
+@app.get("/questions", include_in_schema=False)
+async def legacy_questions_redirect(request: Request):
+    """
+    Legacy handler for /questions root path. Redirects to /questions/ using dynamic scheme/host.
+    """
+    redirect_url = build_redirect_url(request, path="/questions/")
+    return RedirectResponse(url=redirect_url, status_code=307)
 @app.options("/api/sections/{section_id}/subsections/", include_in_schema=False)
 async def options_api_sections_subsections():
     allow_origin = origins[0] if len(origins) == 1 else ",".join(origins)
