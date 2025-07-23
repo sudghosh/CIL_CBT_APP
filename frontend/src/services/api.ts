@@ -356,9 +356,9 @@ export const authAPI = {
 // Questions API
 export const questionsAPI = {
   getQuestions: (params?: { paper_id?: number; section_id?: number; page?: number; page_size?: number }) =>
-    axiosInstance.get('/questions', { params }),
-  getQuestion: (id: number) => axiosInstance.get(`/questions/${id}`),
-  createQuestion: (data: QuestionData) => axiosInstance.post('/questions', data),  uploadQuestions: (file: File) => {
+    axiosInstance.get('/api/questions', { params }),
+  getQuestion: (id: number) => axiosInstance.get(`/api/questions/${id}`),
+  createQuestion: (data: QuestionData) => axiosInstance.post('/api/questions', data),  uploadQuestions: (file: File) => {
     console.log(`Preparing to upload file: ${file.name}, size: ${file.size}, type: ${file.type}`);
     
     // Additional validation to prevent empty files
@@ -399,7 +399,7 @@ export const questionsAPI = {
     });
     
     // Set specific options for file uploads
-    return axiosInstance.post('/questions/upload', formData, {
+    return axiosInstance.post('/api/questions/upload', formData, {
       headers: { 
         // Let the browser set the Content-Type with boundary automatically
         // 'Content-Type' will be set automatically with the correct boundary by the browser
@@ -485,11 +485,11 @@ export const questionsAPI = {
       throw error; // Re-throw to maintain error chain
     });
   },
-  updateQuestion: (id: number, data: any) => axiosInstance.put(`/questions/${id}`, data),
-  deactivateQuestion: (id: number) => axiosInstance.put(`/questions/${id}/deactivate`),
+  updateQuestion: (id: number, data: any) => axiosInstance.put(`/api/questions/${id}`, data),
+  deactivateQuestion: (id: number) => axiosInstance.put(`/api/questions/${id}/deactivate`),
   deleteQuestion: (id: number) => {
     console.log(`[DEBUG][API] Initiating DELETE request for question ID: ${id}`);
-    return axiosInstance.delete(`/questions/${id}`)
+    return axiosInstance.delete(`/api/questions/${id}`)
       .then(response => {
         console.log(`[DEBUG][API] DELETE question ${id} succeeded:`, response);
         return response;
@@ -506,7 +506,7 @@ export const questionsAPI = {
       });
   },
   downloadAllQuestions: () =>
-    axiosInstance.get('/questions/admin/download-all', { responseType: 'blob' }),
+    axiosInstance.get('/api/questions/admin/download-all', { responseType: 'blob' }),
 };
 
 // Tests API
@@ -653,7 +653,7 @@ export const testsAPI = {
       console.log(`[API] Using fallback method to count questions for paper=${paperId}, section=${sectionId || 'all'}`);
         try {
         // Get all questions for this paper - using maximum allowed page size
-      const response = await axiosInstance.get('/questions', { 
+      const response = await axiosInstance.get('/api/questions', { 
           params: { 
             paper_id: paperId,
             section_id: sectionId,
@@ -729,7 +729,7 @@ export const testsAPI = {
     
     console.log(`[API] Fetching available count with params:`, params);
     
-    return axiosInstance.get(`/questions/available-count`, { params })
+    return axiosInstance.get(`/api/questions/available-count`, { params })
     .then(response => {
       if (response?.data?.count !== undefined) {
         console.log(`[API] Available count: ${response.data.count} for paper: ${paperId}, section: ${sectionId || 'all'}`);
