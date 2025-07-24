@@ -40,7 +40,7 @@ const HealthCheck: React.FC = () => {
     }}>
       <Paper elevation={3} sx={{ p: 4, maxWidth: '400px', width: '100%', textAlign: 'center' }}>
         <Typography variant="h5" gutterBottom>
-          CIL CBT Application Health
+          CBT Application Health
         </Typography>
         
         {apiStatus === 'loading' && (

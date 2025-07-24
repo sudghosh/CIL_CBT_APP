@@ -184,7 +184,7 @@ class AIAnalyticsService {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { 
           temperature: 0.7, 
-          maxOutputTokens: 2000,
+          maxOutputTokens: 4000, // Increased for better output
           candidateCount: 1
         }
       };
@@ -279,7 +279,7 @@ class AIAnalyticsService {
       console.log('🔄 A4F API request starting...');
       
       const requestBody = {
-        model: 'google/gemini-2.5-flash',
+        model: 'gemini-2.5-flash', // Updated: no provider prefix per A4F API requirements
         messages: [
           { role: 'system', content: 'You are an AI performance analyst for educational assessments. Provide detailed, actionable insights.' },
           { role: 'user', content: prompt }
@@ -394,20 +394,39 @@ Ensure insights are specific, actionable, and based on the actual data patterns.
    */
   private parseGoogleResponse(data: any, request: TrendAnalysisRequest): TrendAnalysisResponse {
     try {
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!content) {
-        throw new Error('No content in Google AI response');
+      // Defensive: log full response for debugging
+      if (!data || !Array.isArray(data.candidates) || !data.candidates[0]) {
+        console.warn('[GoogleAI] Response missing candidates array. Full response:', JSON.stringify(data));
+        return this.createFallbackResponse(JSON.stringify(data), request);
       }
-
+      const candidate = data.candidates[0];
+      if (!candidate.content || !Array.isArray(candidate.content.parts) || !candidate.content.parts[0]) {
+        console.warn('[GoogleAI] Candidate missing content/parts. Full candidate:', JSON.stringify(candidate));
+        return this.createFallbackResponse(JSON.stringify(candidate), request);
+      }
+      const part = candidate.content.parts[0];
+      if (!part || typeof part.text !== 'string') {
+        console.warn('[GoogleAI] Candidate part missing text. Full part:', JSON.stringify(part));
+        return this.createFallbackResponse(JSON.stringify(part), request);
+      }
+      const content = part.text;
       // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         // Fallback to manual parsing if JSON not found
+        console.warn('[GoogleAI] No JSON found in response, returning fallback. Raw content:', content);
         return this.createFallbackResponse(content, request);
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-      
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch (jsonError) {
+        // Malformed JSON, log and fallback
+        console.warn('[GoogleAI] Malformed JSON in response, returning fallback. Raw content:', content);
+        return this.createFallbackResponse(content, request);
+      }
+
       return {
         insights: this.normalizeInsights(parsed.insights || []),
         trendData: this.calculateTrendData(request.performanceData),
@@ -415,7 +434,9 @@ Ensure insights are specific, actionable, and based on the actual data patterns.
       };
     } catch (error) {
       console.error('Error parsing Google AI response:', error);
-      throw new Error('Failed to parse AI response');
+      // Fallback to a generic response if all else fails
+      const errMsg = (error instanceof Error && error.message) ? error.message : 'Unknown error';
+      return this.createFallbackResponse('[ParseError] ' + errMsg, request);
     }
   }
 

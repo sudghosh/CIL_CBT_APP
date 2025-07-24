@@ -166,7 +166,7 @@ export const LoginPage: React.FC = (): JSX.Element => {
           }}
         >
           <Typography component="h1" variant="h4" gutterBottom>
-            CIL CBT Application
+            CBT Application
           </Typography>
           <Typography variant="subtitle1" gutterBottom>
             Please sign in with your Google account
