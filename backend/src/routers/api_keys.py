@@ -15,7 +15,7 @@ from ..database.models import APIKey, APIKeyType, User
 from ..auth.auth import verify_admin
 
 router = APIRouter(
-    prefix="/admin/api-keys",
+    prefix="",
     tags=["API Keys (Admin)"]
 )
 
@@ -52,33 +52,33 @@ class APIKeyValue(BaseModel):
 
 # --- OPTIONS Handlers for CORS ---
 
-@router.options("/", include_in_schema=False)
+@router.options("/admin/api-keys", include_in_schema=False)
 async def options_api_keys():
     """Handle OPTIONS requests for CORS preflight for API keys list/create endpoints"""
     return {}
 
-@router.options("/{key_id}", include_in_schema=False)
+@router.options("/admin/api-keys/{key_id}", include_in_schema=False)
 async def options_api_key_by_id():
     """Handle OPTIONS requests for specific API key endpoints"""
     return {}
 
-@router.options("/{key_id}/key", include_in_schema=False)
+@router.options("/admin/api-keys/{key_id}/key", include_in_schema=False)
 async def options_api_key_value():
     """Handle OPTIONS requests for API key value endpoints"""
     return {}
 
-@router.options("/type/{key_type}/key", include_in_schema=False)
+@router.options("/admin/api-keys/type/{key_type}/key", include_in_schema=False)
 async def options_api_key_by_type():
     """Handle OPTIONS requests for API key by type endpoints"""
     return {}
 
 # --- CRUD Endpoints ---
 
-@router.get("/", response_model=List[APIKeyOut])
+@router.get("/admin/api-keys", response_model=List[APIKeyOut])
 def list_api_keys(db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     return db.query(APIKey).all()
 
-@router.post("/", response_model=APIKeyOut, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/api-keys", response_model=APIKeyOut, status_code=status.HTTP_201_CREATED)
 def create_api_key(data: APIKeyCreate, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     # Only one key per type (enforced by unique constraint)
     if db.query(APIKey).filter_by(key_type=data.key_type).first():
@@ -94,14 +94,14 @@ def create_api_key(data: APIKeyCreate, db: Session = Depends(get_db), admin: Use
     db.refresh(api_key)
     return api_key
 
-@router.get("/{key_id}", response_model=APIKeyOut)
+@router.get("/admin/api-keys/{key_id}", response_model=APIKeyOut)
 def get_api_key(key_id: int, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     api_key = db.query(APIKey).filter_by(id=key_id).first()
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found.")
     return api_key
 
-@router.put("/{key_id}", response_model=APIKeyOut)
+@router.put("/admin/api-keys/{key_id}", response_model=APIKeyOut)
 def update_api_key(key_id: int, data: APIKeyUpdate, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     api_key = db.query(APIKey).filter_by(id=key_id).first()
     if not api_key:
@@ -114,7 +114,7 @@ def update_api_key(key_id: int, data: APIKeyUpdate, db: Session = Depends(get_db
     db.refresh(api_key)
     return api_key
 
-@router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/admin/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_api_key(key_id: int, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     api_key = db.query(APIKey).filter_by(id=key_id).first()
     if not api_key:
@@ -123,7 +123,7 @@ def delete_api_key(key_id: int, db: Session = Depends(get_db), admin: User = Dep
     db.commit()
     return None
 
-@router.get("/{key_id}/key", response_model=APIKeyValue)
+@router.get("/admin/api-keys/{key_id}/key", response_model=APIKeyValue)
 def get_api_key_value(key_id: int, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     """Retrieve the decrypted API key value for actual use."""
     api_key = db.query(APIKey).filter_by(id=key_id).first()
@@ -134,7 +134,7 @@ def get_api_key_value(key_id: int, db: Session = Depends(get_db), admin: User = 
     decrypted_key = api_key.encrypted_key  # This will be automatically decrypted by the EncryptedField
     return APIKeyValue(key=decrypted_key)
 
-@router.get("/type/{key_type}/key", response_model=APIKeyValue)
+@router.get("/admin/api-keys/type/{key_type}/key", response_model=APIKeyValue)
 def get_api_key_by_type(key_type: APIKeyType, db: Session = Depends(get_db), admin: User = Depends(verify_admin)):
     """Retrieve the decrypted API key value by type for actual use."""
     api_key = db.query(APIKey).filter_by(key_type=key_type).first()
