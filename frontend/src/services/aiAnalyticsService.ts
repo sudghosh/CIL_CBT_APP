@@ -180,14 +180,14 @@ class AIAnalyticsService {
     try {
       console.log('🔄 Google AI request starting...');
       
-      const requestBody = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { 
-          temperature: 0.7, 
-          maxOutputTokens: 8000, // Increased for better output
-          candidateCount: 1
-        }
-      };
+        const requestBody = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { 
+            temperature: 0.7, 
+            maxOutputTokens: 16000, // Increased for better output (can raise to 32000 if needed)
+            candidateCount: 1
+          }
+        };
       
       console.log('🔍 Google AI request body:', JSON.stringify(requestBody, null, 2));
 
@@ -285,7 +285,7 @@ class AIAnalyticsService {
           { role: 'user', content: prompt }
         ],
         temperature: 0.7,
-        max_tokens: 2000,
+        max_tokens: 16000, // Increased for better output (can raise to 32000 if needed)
         stream: false
       };
       
@@ -335,11 +335,7 @@ class AIAnalyticsService {
    */
   private buildAnalysisPrompt(request: TrendAnalysisRequest): string {
     const { performanceData, timeframe, analysisType } = request;
-    
-    const dataDescription = performanceData.map(point => 
-      `Date: ${point.date}, Score: ${point.score}${point.topic ? `, Topic: ${point.topic}` : ''}${point.difficulty ? `, Difficulty: ${point.difficulty}` : ''}${point.timeSpent ? `, Time: ${point.timeSpent}min` : ''}`
-    ).join('\n');
-
+    const performanceDataJson = JSON.stringify(performanceData);
     const performanceMetrics = this.generatePerformanceMetrics(performanceData);
 
     return `
@@ -347,8 +343,8 @@ You are an expert educational performance analyst. Analyze the following student
 
 ${performanceMetrics}
 
-Performance Data (${timeframe} timeframe, ${analysisType} analysis):
-${dataDescription}
+Performance Data (${timeframe} timeframe, ${analysisType} analysis) in JSON format:
+${performanceDataJson}
 
 Please provide a comprehensive analysis with specific insights categorized as follows:
 
@@ -368,7 +364,8 @@ Focus on ${analysisType === 'topic' ? 'topic-specific performance patterns' :
           analysisType === 'time' ? 'time management and pacing patterns' :
           'overall performance trends and learning patterns'}.
 
-Format your response as a JSON object:
+Format your response strictly as a JSON object, wrapped in a markdown code block, like this:
+\`\`\`json
 {
   "insights": [
     {
@@ -384,6 +381,7 @@ Format your response as a JSON object:
   ],
   "summary": "Brief overall assessment"
 }
+\`\`\`
 
 Ensure insights are specific, actionable, and based on the actual data patterns.
     `;
@@ -502,10 +500,20 @@ Ensure insights are specific, actionable, and based on the actual data patterns.
    * Creates fallback response when JSON parsing fails
    */
   private createFallbackResponse(content: string, request: TrendAnalysisRequest): TrendAnalysisResponse {
+    let displayContent = content;
+    // Strip markdown code block wrappers if present
+    if (typeof displayContent === 'string') {
+      // Remove ```json ... ``` or generic ``` ... ```
+      const markdownRegex = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
+      const match = displayContent.match(markdownRegex);
+      if (match && match[1]) {
+        displayContent = match[1].trim();
+      }
+    }
     const insights: AITrendInsight[] = [{
       type: 'insight',
       title: 'AI Analysis Summary',
-      content: content.substring(0, 500) + '...',
+      content: displayContent.substring(0, 500) + '...',
       confidence: 75,
       timestamp: new Date().toISOString()
     }];
