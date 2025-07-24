@@ -184,7 +184,7 @@ class AIAnalyticsService {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { 
           temperature: 0.7, 
-          maxOutputTokens: 4000, // Increased for better output
+          maxOutputTokens: 8000, // Increased for better output
           candidateCount: 1
         }
       };
