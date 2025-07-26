@@ -207,25 +207,27 @@ export const LoginPage: React.FC = (): JSX.Element => {
           </Alert>
         )}
 
-        <Box sx={{ mt: 2, position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Box sx={{ mt: { xs: 4, sm: 2 }, position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: { xs: 3, sm: 2 } }}>
           {loading ? (
-            <CircularProgress size={40} />
+            <CircularProgress size={48} sx={{ my: 4 }} />
           ) : (
             <>
               {clientId ? (
-                <GoogleLogin
-                  onSuccess={handleSuccess}
-                  onError={handleError}
-                  useOneTap={false}
-                  theme="filled_blue"
-                  size="large"
-                  type="standard"
-                  shape="rectangular"
-                  width="100%"
-                  context="signin"
-                  text="signin_with"
-                  logo_alignment="left"
-                />
+                <Box sx={{ width: '100%', minHeight: 56, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                  <GoogleLogin
+                    onSuccess={handleSuccess}
+                    onError={handleError}
+                    useOneTap={false}
+                    theme="filled_blue"
+                    size="large"
+                    type="standard"
+                    shape="rectangular"
+                    width="100%"
+                    context="signin"
+                    text="signin_with"
+                    logo_alignment="left"
+                  />
+                </Box>
               ) : (
                 <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
                   Google Client ID is missing. Please check your configuration.
@@ -233,14 +235,14 @@ export const LoginPage: React.FC = (): JSX.Element => {
               )}
               {isDevMode() && (
                 <>
-                  <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
+                  <Divider sx={{ width: '100%', mt: 4, mb: 4 }}>
                     <Typography variant="caption" color="textSecondary">OR</Typography>
                   </Divider>
                   <Button
-                    variant="outlined"
+                    variant="contained"
                     color="primary"
                     onClick={handleDevLogin}
-                    sx={{ width: '100%', borderRadius: 2, py: 1, fontWeight: 600 }}
+                    sx={{ width: '100%', borderRadius: 3, py: 2, fontWeight: 700, fontSize: { xs: '1.15rem', sm: '1rem' }, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }}
                   >
                     Development Login (Bypass Google)
                   </Button>
