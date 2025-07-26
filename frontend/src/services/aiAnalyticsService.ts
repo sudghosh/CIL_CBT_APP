@@ -272,62 +272,64 @@ class AIAnalyticsService {
    */
   private async analyzeWithA4F(request: TrendAnalysisRequest, apiKey: string): Promise<TrendAnalysisResponse> {
     const prompt = this.buildAnalysisPrompt(request);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      console.log('🔄 A4F API request starting...');
-      
-      const requestBody = {
-        model: 'gemini-2.5-flash', // Updated: no provider prefix per A4F API requirements
-        messages: [
-          { role: 'system', content: 'You are an AI performance analyst for educational assessments. Provide detailed, actionable insights.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 16000, // Increased for better output (can raise to 32000 if needed)
-        stream: false
-      };
-      
-      console.log('🔍 A4F request body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch(this.A4F_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': window.location.origin,
-          'User-Agent': 'CIL-CBT-App/1.0',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      
-      console.log('🔍 A4F response status:', response.status);
-      console.log('🔍 A4F response headers:', Object.fromEntries(response.headers.entries()));
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ A4F API error response:', errorText);
-        throw new Error(`A4F API error: ${response.status} - ${errorText}`);
+    const providerModels = [
+      'provider-3/gemini-2.5-flash',
+      'provider-6/gemini-2.5-flash'
+    ];
+    let lastError: Error | null = null;
+    for (const model of providerModels) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      try {
+        console.log(`🔄 A4F API request starting with model: ${model}`);
+        const requestBody = {
+          model,
+          messages: [
+            { role: 'system', content: 'You are an AI performance analyst for educational assessments. Provide detailed, actionable insights.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 16000,
+          stream: false
+        };
+        console.log('🔍 A4F request body:', JSON.stringify(requestBody, null, 2));
+        const response = await fetch(this.A4F_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer': window.location.origin,
+            'User-Agent': 'CIL-CBT-App/1.0',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        console.log('🔍 A4F response status:', response.status);
+        console.log('🔍 A4F response headers:', Object.fromEntries(response.headers.entries()));
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ A4F API error response for model ${model}:`, errorText);
+          lastError = new Error(`A4F API error: ${response.status} - ${errorText}`);
+          continue;
+        }
+        const data = await response.json();
+        console.log(`✅ A4F API response received for model ${model}:`, JSON.stringify(data, null, 2));
+        return this.parseA4FResponse(data, request);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error(`❌ A4F API request failed for model ${model}:`, error);
+        if (error instanceof Error && error.name === 'AbortError') {
+          lastError = new Error(`A4F request timed out after 30 seconds for model ${model}`);
+        } else {
+          lastError = error instanceof Error ? error : new Error(String(error));
+        }
+        // Try next provider model
       }
-
-      const data = await response.json();
-      console.log('✅ A4F API response received:', JSON.stringify(data, null, 2));
-      
-      return this.parseA4FResponse(data, request);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('❌ A4F API request failed:', error);
-      
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('A4F request timed out after 30 seconds');
-      }
-      throw error;
     }
+    // If all provider models fail, throw last error
+    throw lastError || new Error('A4F provider fallback failed for all models');
   }
 
   /**
@@ -335,56 +337,38 @@ class AIAnalyticsService {
    */
   private buildAnalysisPrompt(request: TrendAnalysisRequest): string {
     const { performanceData, timeframe, analysisType } = request;
-    const performanceDataJson = JSON.stringify(performanceData);
+    // Compact JSON for performance data
+    const performanceDataJson = JSON.stringify(performanceData, null, 0);
     const performanceMetrics = this.generatePerformanceMetrics(performanceData);
 
-    return `
-You are an expert educational performance analyst. Analyze the following student performance data and provide detailed, actionable insights.
+    return `You are an expert educational performance analyst. Analyze the following student performance data and provide detailed, actionable insights.
 
 ${performanceMetrics}
 
-Performance Data (${timeframe} timeframe, ${analysisType} analysis) in JSON format:
+Performance Data (${timeframe}, ${analysisType}):
+\`\`\`json
 ${performanceDataJson}
+\`\`\`
 
-Please provide a comprehensive analysis with specific insights categorized as follows:
+Instructions:
+- Provide insights in compact JSON format, wrapped in a markdown code block.
+- Use only the provided data for analysis.
+- Categorize insights as: strengths, weaknesses, opportunities, patterns.
+- For each insight: include title, explanation, confidence (0-100), and type (trend/insight/recommendation).
+- Recommendations should be actionable and generic if data is insufficient.
+- Summary should be concise.
 
-1. STRENGTHS: What the student excels at, strong areas, successful patterns
-2. WEAKNESSES: Areas needing improvement, consistent struggles, problematic patterns  
-3. OPPORTUNITIES: Specific growth potential, recommended focus areas, improvement strategies
-4. PATTERNS: Learning behaviors, performance trends, time-based observations
-
-For each insight, provide:
-- A clear, specific title
-- Detailed explanation with actionable advice
-- Confidence level (0-100%)
-- Type classification (trend/insight/recommendation)
-
-Focus on ${analysisType === 'topic' ? 'topic-specific performance patterns' : 
-          analysisType === 'difficulty' ? 'difficulty level progression and challenges' :
-          analysisType === 'time' ? 'time management and pacing patterns' :
-          'overall performance trends and learning patterns'}.
-
-Format your response strictly as a JSON object, wrapped in a markdown code block, like this:
+Example response:
 \`\`\`json
 {
   "insights": [
-    {
-      "type": "trend|insight|recommendation",
-      "title": "Specific insight title",
-      "content": "Detailed analysis with actionable advice",
-      "confidence": 85
-    }
+    { "type": "trend", "title": "Consistent improvement", "content": "Student scores improved over time.", "confidence": 90 }
   ],
-  "recommendations": [
-    "Specific actionable recommendation 1",
-    "Specific actionable recommendation 2"
-  ],
-  "summary": "Brief overall assessment"
+  "recommendations": ["Practice regularly", "Review weak topics"],
+  "summary": "Student shows positive learning trends."
 }
 \`\`\`
-
-Ensure insights are specific, actionable, and based on the actual data patterns.
-    `;
+`;
   }
 
   /**
@@ -515,13 +499,21 @@ Ensure insights are specific, actionable, and based on the actual data patterns.
       title: 'AI Analysis Summary',
       content: displayContent.substring(0, 500) + '...',
       confidence: 75,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      data: { sourceError: displayContent }
     }];
 
     return {
       insights,
       trendData: this.calculateTrendData(request.performanceData),
-      recommendations: ['Continue practicing regularly', 'Focus on weaker areas']
+      recommendations: [
+        'Continue practicing regularly',
+        'Focus on weaker areas',
+        'Review previous mistakes',
+        'Consult with a mentor or teacher',
+        'Use spaced repetition for study',
+        'Practice time management during tests'
+      ]
     };
   }
 
@@ -585,17 +577,29 @@ Ensure insights are specific, actionable, and based on the actual data patterns.
       };
 
       analysisResult.insights.forEach(insight => {
-        const content = insight.content.toLowerCase();
-        const title = insight.title.toLowerCase();
-        
-        if (content.includes('strength') || content.includes('excel') || content.includes('good at') || content.includes('strong') || title.includes('strength')) {
+        // Prefer explicit type if present
+        const type = (insight.type || '').toLowerCase();
+        if (type === 'strength') {
           categorized.strengths.push(insight);
-        } else if (content.includes('weakness') || content.includes('struggle') || content.includes('difficulty') || content.includes('poor') || title.includes('weakness')) {
+        } else if (type === 'weakness') {
           categorized.weaknesses.push(insight);
-        } else if (content.includes('opportunity') || content.includes('improve') || content.includes('potential') || content.includes('recommendation') || title.includes('opportunity')) {
+        } else if (type === 'opportunity') {
           categorized.opportunities.push(insight);
-        } else {
+        } else if (type === 'pattern') {
           categorized.patterns.push(insight);
+        } else {
+          // Fallback to keyword matching in title/content
+          const content = insight.content.toLowerCase();
+          const title = insight.title.toLowerCase();
+          if (content.includes('strength') || content.includes('excel') || content.includes('good at') || content.includes('strong') || title.includes('strength')) {
+            categorized.strengths.push(insight);
+          } else if (content.includes('weakness') || content.includes('struggle') || content.includes('difficulty') || content.includes('poor') || title.includes('weakness')) {
+            categorized.weaknesses.push(insight);
+          } else if (content.includes('opportunity') || content.includes('improve') || content.includes('potential') || content.includes('recommendation') || title.includes('opportunity')) {
+            categorized.opportunities.push(insight);
+          } else {
+            categorized.patterns.push(insight);
+          }
         }
       });
 
