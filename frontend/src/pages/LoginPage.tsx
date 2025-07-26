@@ -146,100 +146,108 @@ export const LoginPage: React.FC = (): JSX.Element => {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #e3f2fd 0%, #fff 100%)' }}>
-      <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper
-          elevation={6}
-          sx={{
-            p: { xs: 2, sm: 4 },
-            borderRadius: 4,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-            width: '100%',
-            maxWidth: 380,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            position: 'relative',
-            background: 'rgba(255,255,255,0.95)',
-          }}
-        >
-          {/* Branding/logo area */}
-          <Box sx={{ mb: 2, mt: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-            {/* Replace with your logo image if available */}
-            <Box sx={{ mb: 1 }}>
-              <img src="/logo192.png" alt="CBT Logo" style={{ width: 64, height: 64, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
-            </Box>
-            <Typography component="h1" variant="h5" fontWeight={700} color="primary" gutterBottom>
-              CBT Application
-            </Typography>
+    <Box sx={{
+      minHeight: '100vh',
+      width: '100vw',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: {
+        xs: 'linear-gradient(180deg, #f5faff 0%, #e3f2fd 100%)',
+        sm: 'linear-gradient(135deg, #1976d2 0%, #e3f2fd 100%)',
+      },
+      transition: 'background 0.3s',
+    }}>
+      <Paper
+        elevation={8}
+        sx={{
+          p: { xs: 2, sm: 4 },
+          borderRadius: 5,
+          boxShadow: '0 8px 32px rgba(25, 118, 210, 0.15)',
+          width: { xs: '90vw', sm: 400 },
+          maxWidth: 400,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          position: 'relative',
+          background: 'rgba(255,255,255,0.98)',
+        }}
+      >
+        {/* Branding/logo area */}
+        <Box sx={{ mb: 2, mt: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+          <Box sx={{ mb: 1 }}>
+            <img src="/logo192.png" alt="CBT Logo" style={{ width: 56, height: 56, borderRadius: 12, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }} />
           </Box>
-          <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1rem', sm: '1.1rem' } }}>
-            Sign in with your Google account to continue
+          <Typography component="h1" variant="h5" fontWeight={700} color="primary" gutterBottom sx={{ textAlign: 'center', letterSpacing: 1 }}>
+            CBT Application
           </Typography>
+        </Box>
+        <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1rem', sm: '1.1rem' }, mb: 2 }}>
+          Sign in with your Google account to continue
+        </Typography>
 
-          {(error || authError) && (
-            <Alert 
-              severity="error" 
-              sx={{ mt: 2, mb: 2, width: '100%' }}
-              onClose={() => setError(null)}
-            >
-              {error || authError}
-            </Alert>
+        {(error || authError) && (
+          <Alert 
+            severity="error" 
+            sx={{ mt: 2, mb: 2, width: '100%' }}
+            onClose={() => setError(null)}
+          >
+            {error || authError}
+          </Alert>
+        )}
+
+        {googleLoadError && (
+          <Alert 
+            severity="warning" 
+            sx={{ mt: 2, mb: 2, width: '100%' }}
+          >
+            There was a problem loading Google authentication. Please make sure you have an internet connection and cookies are enabled.
+          </Alert>
+        )}
+
+        <Box sx={{ mt: 2, position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {loading ? (
+            <CircularProgress size={40} />
+          ) : (
+            <>
+              {clientId ? (
+                <GoogleLogin
+                  onSuccess={handleSuccess}
+                  onError={handleError}
+                  useOneTap={false}
+                  theme="filled_blue"
+                  size="large"
+                  type="standard"
+                  shape="rectangular"
+                  width="100%"
+                  context="signin"
+                  text="signin_with"
+                  logo_alignment="left"
+                />
+              ) : (
+                <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
+                  Google Client ID is missing. Please check your configuration.
+                </Alert>
+              )}
+              {isDevMode() && (
+                <>
+                  <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
+                    <Typography variant="caption" color="textSecondary">OR</Typography>
+                  </Divider>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    onClick={handleDevLogin}
+                    sx={{ width: '100%', borderRadius: 2, py: 1, fontWeight: 600 }}
+                  >
+                    Development Login (Bypass Google)
+                  </Button>
+                </>
+              )}
+            </>
           )}
-
-          {googleLoadError && (
-            <Alert 
-              severity="warning" 
-              sx={{ mt: 2, mb: 2, width: '100%' }}
-            >
-              There was a problem loading Google authentication. Please make sure you have an internet connection and cookies are enabled.
-            </Alert>
-          )}
-
-          <Box sx={{ mt: 3, position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            {loading ? (
-              <CircularProgress size={40} />
-            ) : (
-              <>
-                {clientId ? (
-                  <GoogleLogin
-                    onSuccess={handleSuccess}
-                    onError={handleError}
-                    useOneTap={false}
-                    theme="filled_blue"
-                    size="large"
-                    type="standard"
-                    shape="rectangular"
-                    width="100%"
-                    context="signin"
-                    text="signin_with"
-                    logo_alignment="left"
-                  />
-                ) : (
-                  <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
-                    Google Client ID is missing. Please check your configuration.
-                  </Alert>
-                )}
-                {isDevMode() && (
-                  <>
-                    <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
-                      <Typography variant="caption" color="textSecondary">OR</Typography>
-                    </Divider>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleDevLogin}
-                      sx={{ width: '100%', borderRadius: 2, py: 1, fontWeight: 600 }}
-                    >
-                      Development Login (Bypass Google)
-                    </Button>
-                  </>
-                )}
-              </>
-            )}
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+        </Box>
+      </Paper>
+    </Box>
   );
 };
