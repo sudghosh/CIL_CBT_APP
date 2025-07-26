@@ -161,28 +161,30 @@ export const LoginPage: React.FC = (): JSX.Element => {
       <Paper
         elevation={8}
         sx={{
-          p: { xs: 2, sm: 4 },
-          borderRadius: 5,
-          boxShadow: '0 8px 32px rgba(25, 118, 210, 0.15)',
-          width: { xs: '90vw', sm: 400 },
-          maxWidth: 400,
+          p: { xs: 0, sm: 4 },
+          borderRadius: { xs: 0, sm: 5 },
+          boxShadow: { xs: 'none', sm: '0 8px 32px rgba(25, 118, 210, 0.15)' },
+          width: { xs: '100vw', sm: 400 },
+          minHeight: { xs: '100vh', sm: 'auto' },
+          maxWidth: { sm: 400 },
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          justifyContent: 'center',
           position: 'relative',
           background: 'rgba(255,255,255,0.98)',
         }}
       >
-        {/* Branding/logo area */}
-        <Box sx={{ mb: 2, mt: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-          <Box sx={{ mb: 1 }}>
-            <img src="/logo192.png" alt="CBT Logo" style={{ width: 56, height: 56, borderRadius: 12, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }} />
+        {/* Branding/logo area - DemoWay logo, larger for mobile */}
+        <Box sx={{ mb: { xs: 3, sm: 2 }, mt: { xs: 4, sm: 1 }, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+          <Box sx={{ mb: 2 }}>
+            <img src="https://s.dwimg.top/logo/default-app-avatar.svg" alt="CBT Logo" style={{ width: '80px', height: '80px', borderRadius: 20, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }} />
           </Box>
-          <Typography component="h1" variant="h5" fontWeight={700} color="primary" gutterBottom sx={{ textAlign: 'center', letterSpacing: 1 }}>
+          <Typography component="h1" variant="h4" fontWeight={700} color="primary" gutterBottom sx={{ textAlign: 'center', letterSpacing: 1, fontSize: { xs: '2rem', sm: '2.125rem' } }}>
             CBT Application
           </Typography>
         </Box>
-        <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1rem', sm: '1.1rem' }, mb: 2 }}>
+        <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1.2rem', sm: '1.1rem' }, mb: { xs: 4, sm: 2 } }}>
           Sign in with your Google account to continue
         </Typography>
 
