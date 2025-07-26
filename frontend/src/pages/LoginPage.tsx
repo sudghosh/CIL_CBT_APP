@@ -153,8 +153,8 @@ export const LoginPage: React.FC = (): JSX.Element => {
       alignItems: 'center',
       justifyContent: 'center',
       background: {
-        xs: 'linear-gradient(180deg, #f5faff 0%, #e3f2fd 100%)',
-        sm: 'linear-gradient(135deg, #1976d2 0%, #e3f2fd 100%)',
+        xs: 'linear-gradient(180deg, #f8fafc 0%, #f0f4f8 100%)',
+        sm: 'linear-gradient(180deg, #f8fafc 0%, #f0f4f8 100%)',
       },
       transition: 'background 0.3s',
     }}>
