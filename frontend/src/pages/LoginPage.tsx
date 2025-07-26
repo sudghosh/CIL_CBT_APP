@@ -146,30 +146,35 @@ export const LoginPage: React.FC = (): JSX.Element => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
+    <Container maxWidth="xs" sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #e3f2fd 0%, #fff 100%)' }}>
+      <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <Paper
-          elevation={3}
+          elevation={6}
           sx={{
-            p: 4,
+            p: { xs: 2, sm: 4 },
+            borderRadius: 4,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+            width: '100%',
+            maxWidth: 380,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            width: '100%',
+            position: 'relative',
+            background: 'rgba(255,255,255,0.95)',
           }}
         >
-          <Typography component="h1" variant="h4" gutterBottom>
-            CBT Application
-          </Typography>
-          <Typography variant="subtitle1" gutterBottom>
-            Please sign in with your Google account
+          {/* Branding/logo area */}
+          <Box sx={{ mb: 2, mt: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+            {/* Replace with your logo image if available */}
+            <Box sx={{ mb: 1 }}>
+              <img src="/logo192.png" alt="CBT Logo" style={{ width: 64, height: 64, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
+            </Box>
+            <Typography component="h1" variant="h5" fontWeight={700} color="primary" gutterBottom>
+              CBT Application
+            </Typography>
+          </Box>
+          <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1rem', sm: '1.1rem' } }}>
+            Sign in with your Google account to continue
           </Typography>
 
           {(error || authError) && (
@@ -202,10 +207,10 @@ export const LoginPage: React.FC = (): JSX.Element => {
                     onError={handleError}
                     useOneTap={false}
                     theme="filled_blue"
-                    size="large" 
+                    size="large"
                     type="standard"
                     shape="rectangular"
-                    width="300px"
+                    width="100%"
                     context="signin"
                     text="signin_with"
                     logo_alignment="left"
@@ -220,11 +225,11 @@ export const LoginPage: React.FC = (): JSX.Element => {
                     <Divider sx={{ width: '100%', mt: 3, mb: 3 }}>
                       <Typography variant="caption" color="textSecondary">OR</Typography>
                     </Divider>
-                    <Button 
-                      variant="outlined" 
-                      color="primary" 
+                    <Button
+                      variant="outlined"
+                      color="primary"
                       onClick={handleDevLogin}
-                      sx={{ width: '300px' }}
+                      sx={{ width: '100%', borderRadius: 2, py: 1, fontWeight: 600 }}
                     >
                       Development Login (Bypass Google)
                     </Button>
