@@ -82,6 +82,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <Layout>{children}</Layout>;
 };
 
+/// <reference types="react-scripts" />
 const App: React.FC = () => {
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
   const [apiHealth, setApiHealth] = useState<boolean | null>(null);

@@ -7,7 +7,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { logError } from '../utils/errorHandler';
 import { isDevMode } from '../utils/devMode';
 
-export const LoginPage: React.FC = (): JSX.Element => {
+/// <reference types="react-scripts" />
+ export const LoginPage: React.FC = (): React.ReactElement => {
   // Google login success handler
   const handleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
