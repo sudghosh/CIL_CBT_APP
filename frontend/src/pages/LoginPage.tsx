@@ -159,17 +159,20 @@ import { isDevMode } from '../utils/devMode';
         sm: 'linear-gradient(180deg, #f8fafc 0%, #f0f4f8 100%)',
       },
       transition: 'background 0.3s',
-      p: { xs: 0, sm: 2 },
+      p: { xs: 'env(safe-area-inset-top) 0 0 0', sm: 2 },
     }}>
       <Paper
         elevation={8}
         sx={{
-          p: { xs: 2, sm: 4 },
-          borderRadius: { xs: 0, sm: 5 },
-          boxShadow: { xs: 'none', sm: '0 8px 32px rgba(25, 118, 210, 0.10)' },
-          width: { xs: '100vw', sm: 400 },
-          minHeight: { xs: '100vh', sm: 'auto' },
-          maxWidth: { sm: 400 },
+          p: { xs: 4, sm: 4 },
+          borderRadius: { xs: 16, sm: 5 },
+          boxShadow: {
+            xs: '0 8px 32px rgba(25, 118, 210, 0.15)',
+            sm: '0 8px 32px rgba(25, 118, 210, 0.10)'
+          },
+          width: { xs: '92%', sm: 400 },
+          maxWidth: { xs: 400, sm: 400 },
+          minHeight: { xs: '90vh', sm: 'auto' },
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -178,23 +181,71 @@ import { isDevMode } from '../utils/devMode';
           background: 'rgba(255,255,255,0.98)',
         }}
       >
-        {/* Branding/logo area - OpenStax logo, larger for mobile */}
-        <Box sx={{ mb: { xs: 3, sm: 2 }, mt: { xs: 4, sm: 2 }, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center', width: '100%' }}>
-            <img src={OpenStaxLogo} alt="OpenStax Logo" style={{ width: '80px', height: '80px', margin: '0 auto', borderRadius: 16, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }} />
+        {/* Enhanced mobile branding */}
+        <Box sx={{
+          mb: { xs: 4, sm: 2 },
+          mt: { xs: 2, sm: 2 },
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          width: '100%'
+        }}>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center', width: '100%' }}>
+            <img
+              src={OpenStaxLogo}
+              alt="OpenStax Logo"
+              style={{
+                width: '100px',
+                height: '100px',
+                margin: '0 auto',
+                borderRadius: 16,
+                boxShadow: '0 4px 12px rgba(25,118,210,0.15)'
+              }}
+            />
           </Box>
-          <Typography component="h1" variant="h4" fontWeight={700} color="primary" gutterBottom sx={{ textAlign: 'center', letterSpacing: 1, fontSize: { xs: '2rem', sm: '2.125rem' } }}>
+          <Typography
+            component="h1"
+            variant="h4"
+            fontWeight={700}
+            color="primary"
+            gutterBottom
+            sx={{
+              textAlign: 'center',
+              letterSpacing: 1,
+              fontSize: { xs: '2.5rem', sm: '2.125rem' }
+            }}
+          >
             CBT Application
           </Typography>
         </Box>
-        <Typography variant="subtitle1" color="textSecondary" gutterBottom sx={{ textAlign: 'center', fontSize: { xs: '1.1rem', sm: '1.15rem' }, mb: { xs: 4, sm: 2 } }}>
+
+        {/* Enhanced mobile subtitle */}
+        <Typography
+          variant="subtitle1"
+          color="textSecondary"
+          gutterBottom
+          sx={{
+            textAlign: 'center',
+            fontSize: { xs: '1.25rem', sm: '1.15rem' },
+            mb: { xs: 6, sm: 2 },
+            maxWidth: '80%',
+            lineHeight: 1.5
+          }}
+        >
           Sign in with your Google account to continue
         </Typography>
 
+        {/* Error alerts with mobile-friendly styling */}
         {(error || authError) && (
-          <Alert 
-            severity="error" 
-            sx={{ mt: 2, mb: 2, width: '100%' }}
+          <Alert
+            severity="error"
+            sx={{
+              mt: 2,
+              mb: 4,
+              width: '100%',
+              borderRadius: 8,
+              py: 2
+            }}
             onClose={() => setError(null)}
           >
             {error || authError}
@@ -202,21 +253,58 @@ import { isDevMode } from '../utils/devMode';
         )}
 
         {googleLoadError && (
-          <Alert 
-            severity="warning" 
-            sx={{ mt: 2, mb: 2, width: '100%' }}
+          <Alert
+            severity="warning"
+            sx={{
+              mt: 2,
+              mb: 4,
+              width: '100%',
+              borderRadius: 8,
+              py: 2
+            }}
           >
             There was a problem loading Google authentication. Please make sure you have an internet connection and cookies are enabled.
           </Alert>
         )}
 
-        <Box sx={{ mt: { xs: 4, sm: 2 }, position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: { xs: 3, sm: 2 } }}>
+        {/* Enhanced Google login button container */}
+        <Box sx={{
+          mt: { xs: 6, sm: 2 },
+          position: 'relative',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: { xs: 4, sm: 2 },
+          px: { xs: 1, sm: 0 }
+        }}>
           {loading ? (
-            <CircularProgress size={48} sx={{ my: 4 }} />
+            <CircularProgress
+              size={64}
+              sx={{
+                my: 6,
+                color: 'primary.main',
+                thickness: 4
+              }}
+            />
           ) : (
             <>
               {clientId ? (
-                <Box sx={{ width: '100%', minHeight: 56, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                <Box sx={{
+                  width: '100%',
+                  minHeight: { xs: 64, sm: 56 },
+                  borderRadius: { xs: 12, sm: 2 },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(66,133,244,0.2)',
+                  overflow: 'hidden',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    transform: 'scale(1.01)',
+                    boxShadow: '0 6px 16px rgba(66,133,244,0.25)'
+                  }
+                }}>
                   <GoogleLogin
                     onSuccess={handleSuccess}
                     onError={handleError}
@@ -226,26 +314,60 @@ import { isDevMode } from '../utils/devMode';
                     type="standard"
                     shape="rectangular"
                     width="100%"
-                    context="signin"
                     text="signin_with"
                     logo_alignment="left"
                   />
                 </Box>
               ) : (
-                <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
+                <Alert severity="error" sx={{ mb: 3, width: '100%', borderRadius: 8 }}>
                   Google Client ID is missing. Please check your configuration.
                 </Alert>
               )}
+
+              {/* Development login button with mobile styling */}
               {isDevMode() && (
                 <>
-                  <Divider sx={{ width: '100%', mt: 4, mb: 4 }}>
-                    <Typography variant="caption" color="textSecondary">OR</Typography>
+                  <Divider
+                    sx={{
+                      width: '100%',
+                      mt: 4,
+                      mb: 4,
+                      '&::before, &::after': {
+                        borderColor: 'rgba(0,0,0,0.1)'
+                      }
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      color="textSecondary"
+                      sx={{
+                        px: 2,
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        letterSpacing: 1,
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      OR
+                    </Typography>
                   </Divider>
                   <Button
                     variant="contained"
                     color="primary"
                     onClick={handleDevLogin}
-                    sx={{ width: '100%', borderRadius: 3, py: 2, fontWeight: 700, fontSize: { xs: '1.15rem', sm: '1rem' }, boxShadow: '0 2px 8px rgba(25,118,210,0.10)' }}
+                    sx={{
+                      width: '100%',
+                      borderRadius: 12,
+                      py: { xs: 2, sm: 1.5 },
+                      fontWeight: 700,
+                      fontSize: { xs: '1.1rem', sm: '1rem' },
+                      boxShadow: '0 4px 12px rgba(25,118,210,0.2)',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 6px 16px rgba(25,118,210,0.25)'
+                      }
+                    }}
                   >
                     Development Login (Bypass Google)
                   </Button>
