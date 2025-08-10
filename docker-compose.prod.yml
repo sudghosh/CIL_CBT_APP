@@ -11,9 +11,6 @@ services:
   backend:
     build: ./backend
     env_file: .env.prod
-    environment:
-      - ENABLE_DEV_LOGIN=${ENABLE_DEV_LOGIN}
-      - ENV=production
     ports:
       - "8000:8000"
     depends_on:
@@ -27,7 +24,6 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - REACT_APP_ENABLE_DEV_LOGIN=${ENABLE_DEV_LOGIN}
     depends_on:
       - backend
     networks:

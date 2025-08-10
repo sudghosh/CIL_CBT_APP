@@ -5,16 +5,15 @@ services:
     image: postgres:15-alpine
     container_name: cil_hr_postgres
     environment:
-      POSTGRES_USER: cildb
-      POSTGRES_PASSWORD: cildb123
-      POSTGRES_DB: cil_cbt_db
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: cil_hr_exam_db
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cildb -d cil_cbt_db"]
+      test: ["CMD-SHELL", "pg_isready -U myuser -d cil_hr_exam_db"]
       interval: 5s
       timeout: 5s
       retries: 5
